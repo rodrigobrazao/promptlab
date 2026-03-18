@@ -1,0 +1,26 @@
+{
+  "tool": "gemini",
+  "sections": [
+    {
+      "title": "Parâmetros de Geração",
+      "params": [
+        { "name": "temperature", "type": "float 0-2", "description": "Criatividade/aleatoriedade. 0 = determinístico, 2 = muito criativo", "example": "0.7", "default": "1.0" },
+        { "name": "top_p", "type": "float 0-1", "description": "Nucleus sampling. Controla diversidade do vocabulário", "example": "0.9", "default": "0.95" },
+        { "name": "top_k", "type": "integer", "description": "Limita o pool de tokens considerados", "example": "40", "default": "64" },
+        { "name": "max_output_tokens", "type": "integer", "description": "Máximo de tokens na resposta", "example": "2048" }
+      ]
+    },
+    {
+      "title": "Prompting Patterns",
+      "params": [
+        { "name": "System instruction", "type": "pattern", "description": "Define papel e contexto antes do prompt", "example": "You are a visual concept generator for generative art installations." },
+        { "name": "Few-shot", "type": "pattern", "description": "Dá exemplos de input>output antes do pedido real", "example": "Input: fog + electronics > Output: circuit boards dissolving into morning mist..." },
+        { "name": "Multimodal", "type": "pattern", "description": "Envia imagem + texto. Pede análise ou variações", "example": "Analisa esta imagem e gera 5 variações de prompt para Midjourney no mesmo estilo" }
+      ]
+    }
+  ],
+  "patterns": [
+    { "title": "Gerador de prompts MJ a partir de conceito", "prompt": "You are an expert Midjourney prompt engineer. Convert this concept into 3 different Midjourney prompts with --v 6 parameters:\n\nConcept: [descreve aqui]", "note": "Útil para traduzir ideias abstractas em prompts concretos" },
+    { "title": "Análise de estética visual", "prompt": "Analyse this image and describe: 1) lighting setup 2) colour palette (hex codes) 3) compositional technique 4) mood keywords. Format as JSON.", "note": "Usar com imagem de referência para reverse-engineer o estilo" }
+  ]
+}

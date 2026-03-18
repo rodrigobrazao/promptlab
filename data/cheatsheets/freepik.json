@@ -1,0 +1,18 @@
+{
+  "tool": "freepik",
+  "sections": [
+    {
+      "title": "Parâmetros Principais",
+      "params": [
+        { "name": "aspect_ratio", "type": "ratio", "description": "Proporção da imagem gerada", "example": "16:9, 1:1, 4:3, 9:16" },
+        { "name": "style", "type": "string", "description": "Preset de estilo visual", "example": "photo, digital-art, illustration, 3d" },
+        { "name": "color", "type": "string", "description": "Direcção de cor dominante", "example": "neutral, warm, cool, vibrant" },
+        { "name": "lighting", "type": "string", "description": "Tipo de iluminação", "example": "studio, dramatic, soft, neon, golden-hour" }
+      ]
+    }
+  ],
+  "patterns": [
+    { "title": "Textura seamless", "prompt": "[material] texture, seamless pattern, top-down view, no shadows, neutral background, high detail, 4k", "note": "Funciona bem para uso em TouchDesigner ou Three.js" },
+    { "title": "Concept art instalação", "prompt": "immersive art installation, [tema], large scale, dramatic lighting, dark environment, visitors silhouettes for scale, architectural photography", "note": "Referência visual para propostas de projectos" }
+  ]
+}

@@ -1,0 +1,68 @@
+[
+  {
+    "id": "p1",
+    "title": "Volumetric Light — Fog Layer",
+    "tool": "midjourney",
+    "prompt": "god rays through dense fog, volumetric light shafts, cinematic --ar 16:9 --v 6 --stylize 750",
+    "params": { "ar": "16:9", "v": "6", "stylize": "750" },
+    "tags": ["lighting", "atmosphere", "generative"],
+    "rating": 4,
+    "note": "Funciona bem com cenas de instalação. Combinar com Deforum para loops.",
+    "createdAt": "2026-03-18"
+  },
+  {
+    "id": "p2",
+    "title": "SDXL Noise Texture — Organic",
+    "tool": "comfyui",
+    "prompt": "organic cellular noise, voronoi pattern, microscopic texture, 4k seamless tile, neutral palette",
+    "params": { "steps": "30", "cfg": "7", "sampler": "dpmpp_2m" },
+    "tags": ["texture", "seamless", "generative"],
+    "rating": 5,
+    "note": "Usar como base no TouchDesigner — pipe para TOP.",
+    "createdAt": "2026-03-18"
+  },
+  {
+    "id": "p3",
+    "title": "Abstract Geometry — Brutalist",
+    "tool": "gemini",
+    "prompt": "brutalist concrete structure, angular geometry, dramatic shadow, overcast sky, Tadao Ando influence, photorealistic",
+    "params": { "temperature": "0.7" },
+    "tags": ["architecture", "reference"],
+    "rating": 3,
+    "note": "",
+    "createdAt": "2026-03-18"
+  },
+  {
+    "id": "p4",
+    "title": "Particle Field — Dark Matter",
+    "tool": "freepik",
+    "prompt": "quantum particle field, dark matter visualization, bioluminescent traces, deep space, long exposure effect, ultra-detailed",
+    "params": {},
+    "tags": ["generative", "particles", "space"],
+    "rating": 4,
+    "note": "",
+    "createdAt": "2026-03-18"
+  },
+  {
+    "id": "p5",
+    "title": "LiDAR Point Cloud Viz",
+    "tool": "midjourney",
+    "prompt": "LiDAR point cloud visualization, sparse data topology, wireframe depth map, technical aesthetic, neon on black --ar 16:9 --v 6",
+    "params": { "ar": "16:9", "v": "6" },
+    "tags": ["data-viz", "lidar", "installation"],
+    "rating": 5,
+    "note": "Referência para instalação com Raspberry + LiDAR.",
+    "createdAt": "2026-03-18"
+  },
+  {
+    "id": "p6",
+    "title": "Motion Blur — Kinetic Form",
+    "tool": "comfyui",
+    "prompt": "fluid motion blur, kinetic sculpture in motion, long exposure, minimal background, studio light",
+    "params": { "steps": "25", "cfg": "6.5" },
+    "tags": ["motion", "sculpture"],
+    "rating": 3,
+    "note": "",
+    "createdAt": "2026-03-18"
+  }
+]

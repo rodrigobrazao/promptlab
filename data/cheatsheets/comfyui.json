@@ -1,0 +1,39 @@
+{
+  "tool": "comfyui",
+  "sections": [
+    {
+      "title": "KSampler — Parâmetros Principais",
+      "params": [
+        { "name": "steps", "type": "integer", "description": "Número de passos de diffusion. Mais = mais detalhe (mas mais lento)", "example": "30", "default": "20" },
+        { "name": "cfg_scale", "type": "float 1-20", "description": "Classifier Free Guidance. Maior = mais fiel ao prompt mas menos criativo", "example": "7", "default": "7" },
+        { "name": "sampler_name", "type": "string", "description": "Algoritmo de sampling", "example": "dpmpp_2m", "default": "euler" },
+        { "name": "scheduler", "type": "string", "description": "Schedule de noise", "example": "karras", "default": "normal" },
+        { "name": "denoise", "type": "0-1", "description": "Para img2img — quanto da imagem original se preserva (1 = ignora original)", "example": "0.75", "default": "1" },
+        { "name": "seed", "type": "integer", "description": "Seed de aleatoriedade. -1 = aleatório", "example": "42", "default": "-1" }
+      ]
+    },
+    {
+      "title": "Samplers Recomendados",
+      "params": [
+        { "name": "dpmpp_2m + karras", "type": "combo", "description": "Excelente qualidade/velocidade. O mais usado.", "example": "20-30 steps" },
+        { "name": "euler_a", "type": "sampler", "description": "Mais criativo/variado. Bom para exploração.", "example": "25-40 steps" },
+        { "name": "dpmpp_3m_sde + karras", "type": "combo", "description": "Alta qualidade, mais lento. Para resultados finais.", "example": "30-40 steps" }
+      ]
+    },
+    {
+      "title": "Nodes Essenciais",
+      "params": [
+        { "name": "CheckpointLoaderSimple", "type": "node", "description": "Carrega o modelo base (checkpoint .safetensors)", "example": "SDXL, SD1.5, Flux" },
+        { "name": "CLIPTextEncode", "type": "node", "description": "Converte texto em embeddings. Um para positive, um para negative prompt", "example": "" },
+        { "name": "KSampler", "type": "node", "description": "O nó central — executa o processo de diffusion", "example": "" },
+        { "name": "VAEDecode", "type": "node", "description": "Converte latent space em imagem final", "example": "" },
+        { "name": "LoraLoader", "type": "node", "description": "Carrega LoRA para fine-tuning de estilo/personagem", "example": "strength: 0.6-1.0" },
+        { "name": "ImageScale", "type": "node", "description": "Redimensiona imagem. Usar antes de hires fix", "example": "" }
+      ]
+    }
+  ],
+  "patterns": [
+    { "title": "Workflow base txt2img", "prompt": "CheckpointLoader > CLIPTextEncode (pos+neg) > EmptyLatentImage > KSampler > VAEDecode > SaveImage", "note": "Workflow mínimo funcional. Ponto de partida." },
+    { "title": "Hires fix (upscale)", "prompt": "...KSampler > VAEDecode > ImageScale (2x) > VAEEncode > KSampler (denoise 0.5) > VAEDecode > SaveImage", "note": "Segunda passagem com denoise baixo melhora detalhe sem mudar composição" }
+  ]
+}

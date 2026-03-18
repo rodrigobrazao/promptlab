@@ -1,0 +1,32 @@
+{
+  "tool": "midjourney",
+  "sections": [
+    {
+      "title": "Core Parameters",
+      "params": [
+        { "name": "--v", "type": "integer", "description": "Versão do modelo (5.2, 6, 6.1)", "example": "--v 6", "default": "6" },
+        { "name": "--ar", "type": "ratio", "description": "Aspect ratio da imagem", "example": "--ar 16:9", "default": "1:1" },
+        { "name": "--stylize", "type": "integer 0-1000", "description": "Força do estilo artístico MJ. Maior = mais interpretativo", "example": "--stylize 750", "default": "100" },
+        { "name": "--chaos", "type": "integer 0-100", "description": "Variação aleatória nas gerações. Maior = mais imprevisível", "example": "--chaos 20", "default": "0" },
+        { "name": "--quality", "type": "0.25 | 0.5 | 1", "description": "Tempo de renderização / detalhe", "example": "--quality 1", "default": "1" },
+        { "name": "--seed", "type": "integer", "description": "Seed para reprodutibilidade", "example": "--seed 12345" },
+        { "name": "--no", "type": "text", "description": "Negative prompt — o que excluir", "example": "--no text, watermark" },
+        { "name": "--tile", "type": "flag", "description": "Gera padrão tileable (seamless)", "example": "--tile" },
+        { "name": "--iw", "type": "0-3", "description": "Image weight — peso de imagem de referência", "example": "--iw 1.5", "default": "1" },
+        { "name": "--cref", "type": "url", "description": "Character reference — mantém consistência de personagem", "example": "--cref https://..." }
+      ]
+    },
+    {
+      "title": "Style Suffixes",
+      "params": [
+        { "name": "::weight", "type": "float", "description": "Multi-prompt weight. ex: forest::2 castle::1", "example": "forest::2 castle::1" },
+        { "name": "--style raw", "type": "flag", "description": "Menos opinionated, mais fotorealista em v6", "example": "--style raw" }
+      ]
+    }
+  ],
+  "patterns": [
+    { "title": "Fotorealismo técnico", "prompt": "[sujeito], photorealistic, shot on Sony A7R, 85mm, f/1.8, natural light --ar 3:2 --v 6 --style raw", "note": "Remover --style raw para look mais pictórico" },
+    { "title": "Arte generativa / glitch", "prompt": "[sujeito], glitch art, datamoshing, pixel sorting, corrupted data aesthetic --ar 1:1 --v 6 --stylize 900 --chaos 30", "note": "Aumentar chaos para resultados mais imprevisíveis" },
+    { "title": "Instalação / projecção", "prompt": "[sujeito], projection mapping reference, dark background, high contrast, architectural surface --ar 16:9 --v 6 --stylize 600", "note": "Usar como referência visual para mapeamento" }
+  ]
+}

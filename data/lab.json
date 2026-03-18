@@ -1,0 +1,28 @@
+[
+  {
+    "id": "l1",
+    "date": "2026-03-18",
+    "promptId": "p1",
+    "tool": "midjourney",
+    "prompt": "god rays through dense fog, volumetric light shafts, cinematic --ar 16:9 --v 6 --stylize 750",
+    "config": "v6, stylize 750",
+    "image": null,
+    "worked": "A luz volumétrica ficou muito convincente e dramática",
+    "failed": "O foreground ficou muito vazio, precisa de elementos",
+    "next": "Adicionar elementos de foreground, tentar --chaos 15",
+    "rating": 4
+  },
+  {
+    "id": "l2",
+    "date": "2026-03-17",
+    "promptId": null,
+    "tool": "comfyui",
+    "prompt": "cellular automata growth pattern, organic expansion",
+    "config": "SDXL, 30 steps, DPM++ 2M",
+    "image": null,
+    "worked": "Padrão orgânico convincente, boa para uso em touchdesigner",
+    "failed": "Resolução baixa para projection mapping",
+    "next": "Aumentar para 2048x2048, testar upscaler",
+    "rating": 3
+  }
+]
