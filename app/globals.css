@@ -29,12 +29,14 @@
     --tag-comfy: #8ac86e;
     --tag-gemini: #c86e8a;
     --tag-fp: #9b6ec8;
+    --sidebar: #232323;
+    --text-muted: #555555;
   }
 
   * { box-sizing: border-box; }
 
   body {
-    font-family: 'Source Sans 3', sans-serif;
+    font-family: var(--font-sans);
     background: var(--bg);
     color: var(--text);
     overflow: hidden;
@@ -43,7 +45,7 @@
 
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 }
 
 .mono { font-family: 'Source Code Pro', monospace; }

@@ -1,7 +1,9 @@
+import type { ReactNode } from 'react'
+
 interface TopbarProps {
   title: string
   count?: string
-  actions?: React.ReactNode
+  actions?: ReactNode
   search?: { value: string; onChange: (v: string) => void; placeholder?: string }
 }
 
