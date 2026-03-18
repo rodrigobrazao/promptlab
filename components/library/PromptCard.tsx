@@ -30,9 +30,9 @@ export default function PromptCard({ prompt: p, selected, onClick }: Props) {
         className="mono"
         style={{
           fontSize: 11.5,
-          color: '#aaa',
+          color: 'var(--text-code)',
           background: 'var(--bg)',
-          border: '1px solid #3a3a3a',
+          border: '1px solid var(--border-subtle)',
           borderRadius: 3,
           padding: '7px 9px',
           marginBottom: 9,

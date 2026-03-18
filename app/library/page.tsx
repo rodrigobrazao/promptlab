@@ -33,7 +33,7 @@ export default function LibraryPage() {
         actions={
           <button style={{
             background: 'var(--accent)',
-            color: '#1a1400',
+            color: 'var(--accent-dark)',
             border: 'none',
             borderRadius: 4,
             padding: '5px 12px',

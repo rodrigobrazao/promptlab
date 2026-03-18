@@ -25,7 +25,7 @@ export function MetaTag({ label }: { label: string }) {
       fontSize: 10,
       color: '#666',
       background: 'var(--bg)',
-      border: '1px solid #3a3a3a',
+      border: '1px solid var(--border-subtle)',
       borderRadius: 2,
       padding: '1px 6px',
     }}>

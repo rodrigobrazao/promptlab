@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import type { Prompt } from '@/lib/types'
 import { ToolTag, MetaTag } from '@/components/ui/Tag'
 import { StarRating } from '@/components/ui/StarRating'
@@ -9,7 +10,7 @@ interface Props {
   onClose: () => void
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
       <div style={{
@@ -100,9 +101,9 @@ export default function DetailPanel({ prompt: p, onClose }: Props) {
         <Field label="Prompt">
           <div className="mono" style={{
             fontSize: 12,
-            color: '#aaa',
+            color: 'var(--text-code)',
             background: 'var(--bg)',
-            border: '1px solid #3a3a3a',
+            border: '1px solid var(--border-subtle)',
             borderRadius: 3,
             padding: '8px 10px',
             lineHeight: 1.6,
@@ -119,10 +120,10 @@ export default function DetailPanel({ prompt: p, onClose }: Props) {
                 <span key={k} style={{
                   fontSize: 11,
                   background: 'var(--bg)',
-                  border: '1px solid #3a3a3a',
+                  border: '1px solid var(--border-subtle)',
                   borderRadius: 3,
                   padding: '2px 8px',
-                  color: '#aaa',
+                  color: 'var(--text-code)',
                   fontFamily: 'monospace',
                 }}>
                   --{k} <span style={{ color: 'var(--accent)', fontWeight: 500 }}>{v}</span>
