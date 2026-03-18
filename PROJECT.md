@@ -38,4 +38,29 @@ Criado para um creative technologist que trabalha com TouchDesigner, p5.js, Thre
 
 ---
 
+## Deployment
+
+| Item | Valor |
+|------|-------|
+| **Data** | 2026-03-18 |
+| **GitHub** | Pendente — `gh` CLI não instalado. Instalar com `brew install gh`, autenticar com `gh auth login`, depois correr: `gh repo create promptlab --public --source=. --remote=origin --push` |
+| **Vercel** | Pendente — sem sessão autenticada. Instalar com `npm i -g vercel`, autenticar com `vercel login`, depois correr: `vercel --yes` na raiz do projecto |
+
+### Comandos prontos a executar após autenticação
+
+```bash
+# GitHub
+brew install gh
+gh auth login
+cd "/Users/rbmacbookpro/Library/Mobile Documents/com~apple~CloudDocs/00_WORK/11_AI/promptlab"
+gh repo create promptlab --public --description "Personal AI prompt management system — Midjourney, ComfyUI, Gemini, Freepik" --source=. --remote=origin --push
+
+# Vercel (após GitHub push)
+npm i -g vercel
+vercel login
+vercel --yes
+```
+
+---
+
 *Backup automático — actualizar sempre que houver decisões de arquitectura ou mudanças de âmbito.*
