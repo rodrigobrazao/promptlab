@@ -1227,17 +1227,47 @@ function handleRelease(x, y) {
 // AUDIO
 // ============================================================
 
+let reverbBus, reverbReturn;
+
 function ensureAudio() {
   if (audioCtx) return;
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     masterGain = audioCtx.createGain();
-    masterGain.gain.value = 1.4;
+    masterGain.gain.value = 1.6;
     panNode = audioCtx.createStereoPanner();
     panNode.pan.value = 0;
     masterGain.connect(panNode);
     panNode.connect(audioCtx.destination);
+
+    // bus de reverb feito por cadeia de delays com feedback
+    reverbBus = audioCtx.createGain();
+    reverbBus.gain.value = 1.0;
+    const delay1 = audioCtx.createDelay(2);
+    delay1.delayTime.value = 0.13;
+    const delay2 = audioCtx.createDelay(2);
+    delay2.delayTime.value = 0.27;
+    const delay3 = audioCtx.createDelay(2);
+    delay3.delayTime.value = 0.41;
+    const fb = audioCtx.createGain();
+    fb.gain.value = 0.55;
+    const tone = audioCtx.createBiquadFilter();
+    tone.type = 'lowpass'; tone.frequency.value = 1800; tone.Q.value = 0.5;
+    reverbReturn = audioCtx.createGain();
+    reverbReturn.gain.value = 0.45;
+    reverbBus.connect(delay1);
+    delay1.connect(delay2);
+    delay2.connect(delay3);
+    delay3.connect(fb);
+    fb.connect(delay1);
+    delay3.connect(tone);
+    tone.connect(reverbReturn);
+    reverbReturn.connect(masterGain);
   } catch (e) {}
+}
+
+function sendToReverb(node) {
+  if (reverbBus) node.connect(reverbBus);
 }
 
 // drones com frequências variáveis — usados para mudar "intenção" da música
@@ -1255,16 +1285,102 @@ function startAmbient() {
   layers.forEach(L => {
     const osc = audioCtx.createOscillator();
     const g = audioCtx.createGain();
-    // filtro low-pass suave para não ficar áspero
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'lowpass'; filter.frequency.value = 600; filter.Q.value = 0.7;
     osc.type = L.type; osc.frequency.value = L.f;
     g.gain.value = 0;
     g.gain.linearRampToValueAtTime(L.g, audioCtx.currentTime + 3.5);
     osc.connect(filter); filter.connect(g); g.connect(masterGain);
+    sendToReverb(g);
     osc.start();
     drones.push({ osc, g, filter, baseFreq: L.f, baseGain: L.g });
   });
+
+  // melodia contínua
+  startMelody();
+}
+
+// === MELODIA — Lá menor natural, melancólica, lenta, com reverb ===
+// A minor scale: A C D E F G + Bb (Phrygian colour para tristeza)
+// MIDI-like freqs: A3=220, C4=261.63, D4=293.66, E4=329.63, F4=349.23, G4=392.00, Bb4=466.16, A4=440
+const MELODY_NOTES = {
+  A3: 220.00, C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00,
+  A4: 440.00, Bb4: 466.16, C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46,
+  G5: 783.99
+};
+// frases melódicas curtas, descendentes, com pausas (null = silêncio)
+const MELODY_PHRASES = [
+  ["A4", "G4", "F4", "E4", null, "D4", "E4", "C4"],
+  ["E5", "D5", "C5", "Bb4", "A4", null, "F4", "E4"],
+  ["C5", "Bb4", "A4", null, "G4", "A4", "F4", null],
+  ["A4", "C5", "Bb4", "A4", "G4", "F4", "E4", "D4"],
+  ["F5", "E5", "D5", "C5", null, "Bb4", "A4", null],
+  ["D4", "F4", "E4", "D4", "C4", null, "A3", null]
+];
+let melodyOn = false;
+let melodyVoiceGain = 0.16; // volume base — ajustável por mood
+
+function startMelody() {
+  if (melodyOn) return;
+  melodyOn = true;
+  scheduleNextPhrase();
+}
+
+function scheduleNextPhrase() {
+  if (!melodyOn || !audioCtx) return;
+  const phrase = MELODY_PHRASES[Math.floor(Math.random() * MELODY_PHRASES.length)];
+  const noteInterval = 1100 + Math.random() * 400; // ms entre notas
+  for (let i = 0; i < phrase.length; i++) {
+    const n = phrase[i];
+    if (n) {
+      setTimeout(() => playMelodyNote(MELODY_NOTES[n]), i * noteInterval);
+    }
+  }
+  const phraseLen = phrase.length * noteInterval;
+  // pausa entre frases
+  const restTime = 1800 + Math.random() * 2200;
+  setTimeout(scheduleNextPhrase, phraseLen + restTime);
+}
+
+function playMelodyNote(freq) {
+  if (!audioCtx || !melodyOn) return;
+  const t = audioCtx.currentTime;
+  const dur = 2.6;
+
+  // voz 1: triangle suave (piano-ish)
+  const o1 = audioCtx.createOscillator();
+  const g1 = audioCtx.createGain();
+  const f1 = audioCtx.createBiquadFilter();
+  o1.type = 'triangle'; o1.frequency.value = freq;
+  f1.type = 'lowpass'; f1.frequency.value = 2200; f1.Q.value = 0.6;
+  g1.gain.setValueAtTime(0, t);
+  g1.gain.linearRampToValueAtTime(melodyVoiceGain, t + 0.04);
+  g1.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o1.connect(f1); f1.connect(g1); g1.connect(masterGain);
+  sendToReverb(g1);
+  o1.start(t); o1.stop(t + dur + 0.1);
+
+  // voz 2: sine uma oitava abaixo (corpo)
+  const o2 = audioCtx.createOscillator();
+  const g2 = audioCtx.createGain();
+  o2.type = 'sine'; o2.frequency.value = freq / 2;
+  g2.gain.setValueAtTime(0, t);
+  g2.gain.linearRampToValueAtTime(melodyVoiceGain * 0.55, t + 0.05);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o2.connect(g2); g2.connect(masterGain);
+  sendToReverb(g2);
+  o2.start(t); o2.stop(t + dur + 0.1);
+
+  // voz 3: sine duas oitavas acima muito baixinha (ar/cintilação)
+  const o3 = audioCtx.createOscillator();
+  const g3 = audioCtx.createGain();
+  o3.type = 'sine'; o3.frequency.value = freq * 2;
+  g3.gain.setValueAtTime(0, t);
+  g3.gain.linearRampToValueAtTime(melodyVoiceGain * 0.18, t + 0.08);
+  g3.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.7);
+  o3.connect(g3); g3.connect(masterGain);
+  sendToReverb(g3);
+  o3.start(t); o3.stop(t + dur);
 }
 
 // força global (0..1)
@@ -1312,20 +1428,24 @@ function updatePanFromProfile() {
 // chamado em cada mudança de secção para definir cor musical
 function setSectionMood(sec) {
   if (!ambientOn) return;
-  // 0..1 intensidade base por secção
   const moods = {
-    1: 0.55,  // ponto — suave mas presente
-    2: 0.60,  // género — calmo
-    3: 0.70,  // mapa — expansivo
-    4: 0.95,  // feed — denso, opressivo
-    5: 1.10,  // linha — confronto
-    6: 1.25,  // tempo — épico
-    7: 0.80,  // espelho — reflexivo
-    8: 0.55   // números — esvazia-se
+    1: 0.55,
+    2: 0.60,
+    3: 0.70,
+    4: 0.95,
+    5: 1.10,
+    6: 1.25,
+    7: 0.80,
+    8: 0.55
   };
   const tens = { 1: 0, 2: 0, 3: 0.1, 4: 0.4, 5: 0.6, 6: 0.9, 7: 0.5, 8: 0.2 };
+  // melodia: mais alta no confronto, mais distante no fim
+  const melVol = {
+    1: 0.14, 2: 0.16, 3: 0.18, 4: 0.20, 5: 0.22, 6: 0.24, 7: 0.18, 8: 0.10
+  };
   if (sec in moods) setMusicIntensity(moods[sec]);
   if (sec in tens)  setMusicTension(tens[sec]);
+  if (sec in melVol) melodyVoiceGain = melVol[sec];
 }
 
 // ====== one-shots ======
@@ -1396,6 +1516,7 @@ function envSine(freq, peak, dur, delay, wave) {
   g.gain.linearRampToValueAtTime(peak, t + Math.min(0.05, dur * 0.15));
   g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(g); g.connect(masterGain);
+  sendToReverb(g);
   o.start(t); o.stop(t + dur + 0.1);
 }
 
