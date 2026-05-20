@@ -717,20 +717,23 @@ function drawSec5Ask() {
   textAlign(RIGHT, CENTER);
   text("CONCORDO", lineX2, lineY + ts(0.03));
 
-  // ponto arrastável
+  // ponto arrastável — maior e com halo subtil
   const px = lerp(lineX1, lineX2, s5_pos);
-  fill(255); noStroke();
-  ellipse(px, lineY, 22);
+  noStroke();
+  fill(255, 40); ellipse(px, lineY, 56);
+  fill(255); ellipse(px, lineY, 30);
 
   if (s5_answered) {
     s5_revealT += deltaTime;
     const a = profile.agreements[s5_idx];
     const matchPct = computeMatchPct(stmt, a);
-    fill(255, min(220, s5_revealT * 0.5));
+    // fade-in lento + tempo alargado para ler
+    const alpha = min(220, s5_revealT * 0.25);
+    fill(255, alpha);
     textAlign(CENTER, CENTER);
-    setText(0.014);
-    text(matchPct + "% dos jovens <35 responde como tu", cx, lineY + ts(0.08));
-    if (s5_revealT > 1000) {
+    setText(0.016, 0.024);
+    text(matchPct + "% dos jovens <35\nresponde como tu", cx, lineY + ts(0.09));
+    if (s5_revealT > 2400) {
       s5_idx++;
       s5_answered = false;
       s5_revealT = 0;
@@ -777,14 +780,18 @@ function drawSec5Summary() {
 
 function handleSec5Press(x, y) {
   if (s5_phase !== 'asking' || s5_answered) return;
-  const lineY = vh * 0.62;
-  const lineX1 = vw * 0.12, lineX2 = vw * 0.88;
-  const px = lerp(lineX1, lineX2, s5_pos);
-  if (abs(y - lineY) < 50 && abs(x - px) < 40) s5_dragging = true;
+  const lineY = vh * 0.66;
+  // alargar a hitbox: toda a metade inferior do ecrã activa o slider
+  if (y > lineY - ts(0.12) && y < lineY + ts(0.10)) {
+    s5_dragging = true;
+    // saltar o ponto para onde o utilizador tocou
+    const lineX1 = vw * 0.14, lineX2 = vw * 0.86;
+    s5_pos = constrain(map(x, lineX1, lineX2, 0, 1), 0, 1);
+  }
 }
 function handleSec5Drag(x, y) {
   if (!s5_dragging) return;
-  const lineX1 = vw * 0.12, lineX2 = vw * 0.88;
+  const lineX1 = vw * 0.14, lineX2 = vw * 0.86;
   s5_pos = constrain(map(x, lineX1, lineX2, 0, 1), 0, 1);
 }
 function handleSec5Release() {
@@ -1225,7 +1232,7 @@ function ensureAudio() {
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     masterGain = audioCtx.createGain();
-    masterGain.gain.value = 0.6;
+    masterGain.gain.value = 1.4;
     panNode = audioCtx.createStereoPanner();
     panNode.pan.value = 0;
     masterGain.connect(panNode);
@@ -1237,16 +1244,26 @@ function ensureAudio() {
 function startAmbient() {
   if (!audioCtx || ambientOn) return;
   ambientOn = true;
-  // base: C2, G2, C3 (consonante)
-  [65.41, 98.00, 130.81].forEach((f, i) => {
+  // 5 camadas: C1 sub, C2, G2, C3, G3 — corpo + harmónicos
+  const layers = [
+    { f: 32.70, g: 0.18, type: 'sine'     }, // sub
+    { f: 65.41, g: 0.14, type: 'sine'     }, // C2
+    { f: 98.00, g: 0.10, type: 'sine'     }, // G2
+    { f: 130.81, g: 0.08, type: 'sine'    }, // C3
+    { f: 196.00, g: 0.05, type: 'triangle' } // G3 harmónico
+  ];
+  layers.forEach(L => {
     const osc = audioCtx.createOscillator();
     const g = audioCtx.createGain();
-    osc.type = 'sine'; osc.frequency.value = f;
+    // filtro low-pass suave para não ficar áspero
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass'; filter.frequency.value = 600; filter.Q.value = 0.7;
+    osc.type = L.type; osc.frequency.value = L.f;
     g.gain.value = 0;
-    g.gain.linearRampToValueAtTime(0.045 - i * 0.010, audioCtx.currentTime + 3);
-    osc.connect(g); g.connect(masterGain);
+    g.gain.linearRampToValueAtTime(L.g, audioCtx.currentTime + 3.5);
+    osc.connect(filter); filter.connect(g); g.connect(masterGain);
     osc.start();
-    drones.push({ osc, g, baseFreq: f, baseGain: 0.045 - i * 0.010 });
+    drones.push({ osc, g, filter, baseFreq: L.f, baseGain: L.g });
   });
 }
 
@@ -1297,14 +1314,14 @@ function setSectionMood(sec) {
   if (!ambientOn) return;
   // 0..1 intensidade base por secção
   const moods = {
-    1: 0.25,  // ponto — suave, contemplativo
-    2: 0.30,  // género — calmo
-    3: 0.40,  // mapa — expansivo
-    4: 0.65,  // feed — denso, opressivo
-    5: 0.75,  // linha — confronto
-    6: 0.85,  // tempo — épico
-    7: 0.50,  // espelho — reflexivo
-    8: 0.35   // números — esvazia-se
+    1: 0.55,  // ponto — suave mas presente
+    2: 0.60,  // género — calmo
+    3: 0.70,  // mapa — expansivo
+    4: 0.95,  // feed — denso, opressivo
+    5: 1.10,  // linha — confronto
+    6: 1.25,  // tempo — épico
+    7: 0.80,  // espelho — reflexivo
+    8: 0.55   // números — esvazia-se
   };
   const tens = { 1: 0, 2: 0, 3: 0.1, 4: 0.4, 5: 0.6, 6: 0.9, 7: 0.5, 8: 0.2 };
   if (sec in moods) setMusicIntensity(moods[sec]);
@@ -1314,19 +1331,20 @@ function setSectionMood(sec) {
 // ====== one-shots ======
 function playClickTone() {
   if (!audioCtx) return;
-  envSine(523.25, 0.12, 0.5);
+  envSine(523.25, 0.30, 0.6);
 }
 function playSoftTick() {
   if (!audioCtx) return;
-  envSine(880, 0.04, 0.12);
+  envSine(880, 0.10, 0.15);
 }
 function playReadyTone() {
   if (!audioCtx) return;
-  [523.25, 659.25].forEach((f, i) => envSine(f, 0.10, 0.7, i * 0.12));
+  [523.25, 659.25].forEach((f, i) => envSine(f, 0.25, 0.9, i * 0.12));
 }
 function playRevealTone() {
   if (!audioCtx) return;
-  [261.63, 329.63, 392.00, 523.25].forEach((f, i) => envSine(f, 0.07, 2, i * 0.05));
+  [130.81, 196.00, 261.63, 329.63, 392.00, 523.25].forEach((f, i) =>
+    envSine(f, 0.16, 3, i * 0.05));
 }
 // feed: pitch varia conforme tema (mais alto = progressista, mais baixo = conservador)
 function playFeedTick(theme) {
@@ -1339,30 +1357,32 @@ function playFeedTick(theme) {
     antifeminist:  329.63,
     nostalgic:     261.63
   };
-  envSine(themeFreq[theme] || 660, 0.04, 0.18);
+  envSine(themeFreq[theme] || 660, 0.14, 0.30);
 }
 // secção 5: acorde consonante para progressista, dissonante para conservadora
 function playAgreementChord(conservative, agreed) {
   if (!audioCtx) return;
   const aligned = (conservative && agreed) || (!conservative && !agreed);
   if (aligned) {
-    // dissonância (tritono + nona b)
-    [261.63, 369.99, 415.30].forEach((f, i) => envSine(f, 0.06, 1.2, i * 0.03, 'triangle'));
+    // dissonância (tritono + nona b) — peso
+    [130.81, 261.63, 369.99, 415.30].forEach((f, i) => envSine(f, 0.18, 1.6, i * 0.03, 'triangle'));
   } else {
     // consonância (perfeita)
-    [261.63, 329.63, 392.00, 523.25].forEach((f, i) => envSine(f, 0.06, 1.2, i * 0.03));
+    [130.81, 261.63, 329.63, 392.00, 523.25].forEach((f, i) => envSine(f, 0.15, 1.6, i * 0.03));
   }
 }
-// secção 6: tom por ano
 function playYearTone(year) {
   if (!audioCtx) return;
   const map2015 = { 2015: 392, 2017: 440, 2019: 392, 2020: 349.23, 2021: 329.63, 2022: 311.13, 2024: 261.63 };
-  envSine(map2015[year] || 392, 0.07, 0.8);
+  envSine(map2015[year] || 392, 0.18, 1.0);
+  // sub bass acompanha
+  envSine((map2015[year] || 392) / 4, 0.14, 1.2, 0, 'triangle');
 }
 function playNumberTone(idx) {
   if (!audioCtx) return;
   const freqs = [196, 220, 246.94, 207.65, 174.61, 130.81];
-  envSine(freqs[idx] || 196, 0.10, 2.2, 0, 'triangle');
+  envSine(freqs[idx] || 196, 0.22, 2.4, 0, 'triangle');
+  envSine((freqs[idx] || 196) * 2, 0.12, 2.4, 0, 'sine');
 }
 
 function envSine(freq, peak, dur, delay, wave) {
