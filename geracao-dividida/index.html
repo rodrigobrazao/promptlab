@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>A GERAÇÃO DIVIDIDA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      overflow: hidden;
+      background: #000;
+      touch-action: none;
+      font-family: 'Roboto Mono', monospace;
+      width: 100%;
+      height: 100%;
+      position: fixed;
+      top: 0;
+      left: 0;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+<script>
+// ============================================================
+// A GERAÇÃO DIVIDIDA — experiência interactiva
+// Estrutura: 0 start · 1..8 secções · 9 fim
+// Dados fictícios — substituir nos blocos DATA.* no fim do ficheiro
+// ============================================================
+
+// --- ESTADO GLOBAL ---
+let section = 0;            // 0 start, 1..8 secções, 9 fim
+let sectionTimer = 0;
+let transitioning = false;
+let transitionT = 0;
+let canAdvance = false;
+
+// Perfil que cresce silenciosamente
+const profile = {
+  quadrant: { x: 0, y: 0 },   // 01 · -1..1 esq/dir, -1..1 lib/aut
+  gender: null,                // 02 · 'M' | 'F'
+  regionIdx: null,             // 03 · índice em DATA.regions
+  feedBias: null,              // 04 · chave em DATA.feedThemes
+  feedTimes: {},               // 04 · tempo por tema
+  agreements: [],              // 05 · 0..1 cada (concordância com 6 afirmações)
+  conservativeScore: 0,        // 05 · contagem de concordâncias conservadoras
+  clusterIdx: null,            // 07 · cluster atribuído
+  clusterMatch: 0              // 07 · % sobreposição
+};
+
+// Áudio
+let audioCtx, masterGain, panNode;
+let drones = [];
+let ambientOn = false;
+let currentPan = 0; // -1 esquerda, +1 direita
+
+// Viewport 9:16
+let vx, vy, vw, vh;
+const VIEWPORT_RATIO = 9 / 16;
+
+function calculateViewport() {
+  const target = VIEWPORT_RATIO;
+  const sr = windowWidth / windowHeight;
+  if (sr > target) {
+    vh = windowHeight; vw = vh * target;
+    vx = (windowWidth - vw) / 2; vy = 0;
+  } else {
+    vw = windowWidth; vh = vw / target;
+    vx = 0; vy = (windowHeight - vh) / 2;
+  }
+}
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  textFont('Roboto Mono');
+  calculateViewport();
+  initSection(0);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  calculateViewport();
+  initSection(section);
+}
+
+// ============================================================
+// DRAW
+// ============================================================
+
+function draw() {
+  background(0);
+  push();
+  translate(vx, vy);
+  drawingContext.save();
+  drawingContext.beginPath();
+  drawingContext.rect(0, 0, vw, vh);
+  drawingContext.clip();
+
+  if (transitioning) {
+    drawTransition();
+  } else {
+    switch (section) {
+      case 0: drawStart(); break;
+      case 1: drawSec1(); break;
+      case 2: drawSec2(); break;
+      case 3: drawSec3(); break;
+      case 4: drawSec4(); break;
+      case 5: drawSec5(); break;
+      case 6: drawSec6(); break;
+      case 7: drawSec7(); break;
+      case 8: drawSec8(); break;
+      case 9: drawEnd(); break;
+    }
+    if (section >= 1 && section <= 8) drawProgress();
+  }
+
+  drawingContext.restore();
+  pop();
+}
+
+function drawProgress() {
+  noStroke();
+  const total = 8;
+  const w = vw * 0.5;
+  const x0 = (vw - w) / 2;
+  const y0 = vh - 24;
+  for (let i = 0; i < total; i++) {
+    fill(255, i < section ? 200 : 40);
+    const x = x0 + (w / total) * i;
+    rect(x + 2, y0, (w / total) - 4, 1);
+  }
+  if (canAdvance) {
+    fill(255, 100 + sin(frameCount * 0.05) * 80);
+    textAlign(CENTER, CENTER);
+    textSize(min(vw, vh) * 0.018);
+    text("TOCA PARA CONTINUAR", vw / 2, vh - 44);
+  }
+}
+
+function drawTransition() {
+  transitionT += 0.04;
+  fill(0, 255 * min(transitionT, 1));
+  noStroke();
+  rect(0, 0, vw, vh);
+  if (transitionT >= 1) {
+    transitioning = false;
+    transitionT = 0;
+    section++;
+    canAdvance = false;
+    sectionTimer = 0;
+    initSection(section);
+  }
+}
+
+function nextSection() {
+  transitioning = true;
+  transitionT = 0;
+}
+
+// ============================================================
+// SECÇÃO 0 · START
+// ============================================================
+
+let startProgress = 0;
+let startReady = false;
+let startClicked = false;
+let startClickT = 0;
+
+function initStart() {
+  startProgress = 0;
+  startReady = false;
+  startClicked = false;
+  startClickT = 0;
+}
+
+function drawStart() {
+  const cx = vw / 2, cy = vh / 2;
+  const r = min(vw, vh) * 0.08;
+
+  if (startClicked) {
+    startClickT += deltaTime;
+    if (startClickT < 400) {
+      noStroke(); fill(255);
+      ellipse(cx, cy, r * 2 * (1 + (startClickT / 400) * 0.2));
+      return;
+    }
+    if (startClickT < 1800) {
+      background(0);
+      return;
+    }
+    section = 1;
+    canAdvance = false;
+    sectionTimer = 0;
+    initSection(1);
+    return;
+  }
+
+  if (!startReady) {
+    startProgress += deltaTime / 2200;
+    if (startProgress >= 1) { startProgress = 1; startReady = true; playReadyTone(); }
+  }
+
+  stroke(255); strokeWeight(2); noFill();
+  if (!startReady) {
+    arc(cx, cy, r * 2, r * 2, -HALF_PI, -HALF_PI + startProgress * TWO_PI);
+  } else {
+    const pulse = 1 + sin(millis() * 0.003) * 0.05;
+    ellipse(cx, cy, r * 2 * pulse);
+    noStroke(); fill(255);
+    textAlign(CENTER, CENTER);
+    textSize(min(vw, vh) * 0.024);
+    text("A GERAÇÃO DIVIDIDA", cx, cy + r + 40);
+    textSize(min(vw, vh) * 0.014);
+    fill(255, 120);
+    text("toca para começar", cx, cy + r + 70);
+  }
+}
+
+function handleStartClick(x, y) {
+  if (!startReady || startClicked) return;
+  const cx = vw / 2, cy = vh / 2;
+  if (dist(x, y, cx, cy) < min(vw, vh) * 0.12) {
+    startClicked = true;
+    ensureAudio();
+    playClickTone();
+    startAmbient();
+  }
+}
+
+// ============================================================
+// SECÇÃO 1 · O PONTO  (quadrante oculto)
+// ============================================================
+
+let s1_point = null;
+let s1_locked = false;
+let s1_lockT = 0;
+
+function initSec1() {
+  s1_point = { x: vw / 2, y: vh / 2 };
+  s1_locked = false;
+  s1_lockT = 0;
+}
+
+function drawSec1() {
+  sectionTimer += deltaTime;
+
+  noStroke();
+  // ponto
+  if (!s1_locked) {
+    const pulse = sin(frameCount * 0.05) * 0.3 + 0.7;
+    fill(255, 255 * pulse);
+    ellipse(s1_point.x, s1_point.y, 22 * pulse);
+  } else {
+    fill(255);
+    ellipse(s1_point.x, s1_point.y, 18);
+    s1_lockT += deltaTime;
+  }
+
+  // instrução
+  noStroke();
+  textAlign(CENTER, CENTER);
+  if (!s1_locked) {
+    fill(255, 160);
+    textSize(min(vw, vh) * 0.020);
+    text("arrasta para onde te sentes", vw / 2, vh * 0.18);
+    textSize(min(vw, vh) * 0.014);
+    fill(255, 80);
+    text("01", vw / 2, vh * 0.12);
+  } else {
+    // revelar quadrante e número
+    const q = readQuadrantLabel(profile.quadrant);
+    const pct = quadrantPct(profile.quadrant);
+    if (s1_lockT > 400) {
+      fill(255, min(255, (s1_lockT - 400) * 0.6));
+      textSize(min(vw, vh) * 0.014);
+      text(q, vw / 2, vh * 0.18);
+      textSize(min(vw, vh) * 0.10);
+      textStyle(BOLD);
+      text(pct + "%", vw / 2, vh / 2 - 120);
+      textStyle(NORMAL);
+      textSize(min(vw, vh) * 0.016);
+      fill(255, min(255, (s1_lockT - 400) * 0.4));
+      text("dos jovens portugueses estão neste quadrante", vw / 2, vh / 2 - 60);
+    }
+    if (s1_lockT > 1200) canAdvance = true;
+  }
+}
+
+function handleSec1Press(x, y) {
+  if (s1_locked) return;
+  s1_point.x = x; s1_point.y = y;
+}
+function handleSec1Drag(x, y) {
+  if (s1_locked) return;
+  s1_point.x = constrain(x, 40, vw - 40);
+  s1_point.y = constrain(y, 80, vh - 80);
+}
+function handleSec1Release() {
+  if (s1_locked) return;
+  // converter posição para quadrante -1..1
+  profile.quadrant.x = map(s1_point.x, 40, vw - 40, -1, 1);
+  profile.quadrant.y = map(s1_point.y, 80, vh - 80, -1, 1);
+  s1_locked = true;
+  playClickTone();
+  updatePanFromProfile();
+}
+
+function readQuadrantLabel(q) {
+  const h = q.x > 0 ? "direita" : "esquerda";
+  const v = q.y > 0 ? "autoritário" : "libertário";
+  return (h + " · " + v).toUpperCase();
+}
+
+// ============================================================
+// SECÇÃO 2 · OS DOIS  (género)
+// ============================================================
+
+let s2_chosen = null;
+let s2_chosenT = 0;
+
+function initSec2() {
+  s2_chosen = null;
+  s2_chosenT = 0;
+}
+
+function drawSec2() {
+  const cy = vh / 2 - 40;
+  const offset = min(vw, vh) * 0.13;
+  const cxL = vw / 2 - offset;
+  const cxR = vw / 2 + offset;
+  const r = min(vw, vh) * 0.07;
+
+  noStroke();
+  textAlign(CENTER, CENTER);
+  fill(255, 80);
+  textSize(min(vw, vh) * 0.014);
+  text("02", vw / 2, vh * 0.12);
+  fill(255, 160);
+  textSize(min(vw, vh) * 0.020);
+  text("qual te representa", vw / 2, vh * 0.18);
+
+  if (s2_chosen === null) {
+    // dois círculos
+    stroke(255); strokeWeight(2); noFill();
+    fill(255); ellipse(cxL, cy, r * 2);     // cheio
+    noFill(); stroke(255); ellipse(cxR, cy, r * 2); // vazio
+  } else {
+    s2_chosenT += deltaTime;
+    // só o escolhido fica
+    const keepL = (s2_chosen === 'M');
+    stroke(255); strokeWeight(2);
+    if (keepL) { fill(255); ellipse(cxL, cy, r * 2); }
+    else { noFill(); ellipse(cxR, cy, r * 2); }
+
+    if (s2_chosenT > 500) {
+      const pct = profile.gender === 'M' ? DATA.chegaShare.maleU35 : DATA.chegaShare.femaleU35;
+      noStroke();
+      fill(255, min(255, (s2_chosenT - 500) * 0.8));
+      textSize(min(vw, vh) * 0.11);
+      textStyle(BOLD);
+      text(pct + "%", vw / 2, vh / 2 + 40);
+      textStyle(NORMAL);
+      textSize(min(vw, vh) * 0.016);
+      fill(255, min(200, (s2_chosenT - 500) * 0.5));
+      const lbl = profile.gender === 'M' ? "dos homens com menos de 35 anos" : "das mulheres com menos de 35 anos";
+      text(lbl, vw / 2, vh / 2 + 110);
+      text("votou Chega em 2024", vw / 2, vh / 2 + 138);
+      if (s2_chosenT > 1500) canAdvance = true;
+    }
+  }
+}
+
+function handleSec2Click(x, y) {
+  if (s2_chosen !== null) return;
+  const cy = vh / 2 - 40;
+  const offset = min(vw, vh) * 0.13;
+  const r = min(vw, vh) * 0.07 + 20;
+  if (dist(x, y, vw / 2 - offset, cy) < r) {
+    s2_chosen = 'M'; profile.gender = 'M'; playClickTone();
+  } else if (dist(x, y, vw / 2 + offset, cy) < r) {
+    s2_chosen = 'F'; profile.gender = 'F'; playClickTone();
+  }
+}
+
+// ============================================================
+// SECÇÃO 3 · O MAPA  (geografia)
+// ============================================================
+
+let s3_dots = [];
+let s3_chosen = null;
+let s3_chosenT = 0;
+let s3_targetIdx = 0;
+
+function initSec3() {
+  s3_dots = [];
+  s3_chosen = null;
+  s3_chosenT = 0;
+  // gerar pontos dentro de um rectângulo simulando PT (proporção alta)
+  const mapW = vw * 0.55, mapH = vh * 0.5;
+  const mx = (vw - mapW) / 2, my = vh * 0.22;
+  for (let i = 0; i < DATA.regions.length; i++) {
+    const r = DATA.regions[i];
+    s3_dots.push({
+      x: mx + r.rx * mapW,
+      y: my + r.ry * mapH,
+      intensity: r.chega
+    });
+  }
+  // alvo = região com maior chega
+  s3_targetIdx = 0;
+  for (let i = 1; i < DATA.regions.length; i++)
+    if (DATA.regions[i].chega > DATA.regions[s3_targetIdx].chega) s3_targetIdx = i;
+}
+
+function drawSec3() {
+  const mapW = vw * 0.55, mapH = vh * 0.5;
+  const mx = (vw - mapW) / 2, my = vh * 0.22;
+
+  noStroke();
+  textAlign(CENTER, CENTER);
+  fill(255, 80); textSize(min(vw, vh) * 0.014);
+  text("03", vw / 2, vh * 0.10);
+  fill(255, 160); textSize(min(vw, vh) * 0.020);
+  text("onde vives", vw / 2, vh * 0.16);
+
+  // contorno aproximado (rectângulo + cantos arredondados)
+  stroke(255, 90); strokeWeight(1); noFill();
+  rect(mx, my, mapW, mapH, 8);
+
+  // pontos
+  for (let i = 0; i < s3_dots.length; i++) {
+    const d = s3_dots[i];
+    const isTarget = (i === s3_targetIdx);
+    const pulse = isTarget ? (sin(frameCount * 0.05) * 0.4 + 0.6) : 1;
+    const alpha = map(d.intensity, 0, 30, 60, 255) * (s3_chosen === null ? 1 : 0.4);
+    noStroke();
+    fill(255, alpha);
+    ellipse(d.x, d.y, (3 + d.intensity * 0.18) * pulse);
+  }
+
+  if (s3_chosen !== null) {
+    s3_chosenT += deltaTime;
+    const c = s3_dots[s3_chosen];
+    const t = s3_dots[s3_targetIdx];
+    // ponto seleccionado
+    noStroke(); fill(255); ellipse(c.x, c.y, 12);
+    // linha até target
+    stroke(255, 200); strokeWeight(1);
+    drawingContext.setLineDash([4, 4]);
+    line(c.x, c.y, t.x, t.y);
+    drawingContext.setLineDash([]);
+
+    if (s3_chosenT > 400) {
+      const region = DATA.regions[s3_chosen];
+      const target = DATA.regions[s3_targetIdx];
+      const distKm = Math.round(dist(c.x, c.y, t.x, t.y) * 1.8); // factor fictício
+      noStroke();
+      fill(255, min(255, (s3_chosenT - 400) * 0.6));
+      textSize(min(vw, vh) * 0.022);
+      textStyle(BOLD);
+      text(region.name.toUpperCase(), vw / 2, my + mapH + 40);
+      textStyle(NORMAL);
+      textSize(min(vw, vh) * 0.07);
+      text(region.chega + "%", vw / 2, my + mapH + 100);
+      textSize(min(vw, vh) * 0.014);
+      fill(255, 150);
+      text("chega no teu concelho · jovens <35", vw / 2, my + mapH + 140);
+      textSize(min(vw, vh) * 0.013);
+      fill(255, 110);
+      text(distKm + " km até " + target.name, vw / 2, my + mapH + 168);
+      if (s3_chosenT > 1500) canAdvance = true;
+    }
+  }
+}
+
+function handleSec3Click(x, y) {
+  if (s3_chosen !== null) return;
+  let best = -1, bd = 1e9;
+  for (let i = 0; i < s3_dots.length; i++) {
+    const d = dist(x, y, s3_dots[i].x, s3_dots[i].y);
+    if (d < bd && d < 40) { bd = d; best = i; }
+  }
+  if (best >= 0) {
+    s3_chosen = best;
+    profile.regionIdx = best;
+    playClickTone();
+  }
+}
+
+// ============================================================
+// SECÇÃO 4 · O FEED  (scroll + medição tempo)
+// ============================================================
+
+let s4_cards = [];
+let s4_offset = 0;
+let s4_targetOffset = 0;
+let s4_currentIdx = 0;
+let s4_lastSwitchTime = 0;
+let s4_phase = 'scroll'; // scroll | reveal
+let s4_revealT = 0;
+
+function initSec4() {
+  s4_cards = [...DATA.feedCards];
+  s4_offset = 0; s4_targetOffset = 0;
+  s4_currentIdx = 0;
+  s4_lastSwitchTime = millis();
+  s4_phase = 'scroll';
+  s4_revealT = 0;
+  profile.feedTimes = {};
+  for (const k of Object.keys(DATA.feedThemes)) profile.feedTimes[k] = 0;
+  sectionTimer = 0;
+}
+
+function drawSec4() {
+  sectionTimer += deltaTime;
+  s4_offset = lerp(s4_offset, s4_targetOffset, 0.18);
+
+  if (s4_phase === 'scroll') {
+    const cardH = vh * 0.7;
+    const cardW = vw * 0.78;
+    const cx = vw / 2;
+
+    // desenhar cards próximos
+    for (let i = 0; i < s4_cards.length; i++) {
+      const cy = vh / 2 + (i * cardH) - s4_offset;
+      if (cy < -cardH || cy > vh + cardH) continue;
+      const distFromCenter = abs(cy - vh / 2);
+      const focus = 1 - constrain(distFromCenter / (cardH * 0.6), 0, 1);
+
+      noStroke();
+      fill(255, 15 + 40 * focus);
+      rect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 4);
+
+      fill(255, 80 + 175 * focus);
+      textAlign(CENTER, CENTER);
+      textSize(min(vw, vh) * 0.026);
+      textStyle(BOLD);
+      const c = s4_cards[i];
+      text('"' + c.text + '"', cx, cy - 20, cardW - 40);
+      textStyle(NORMAL);
+      textSize(min(vw, vh) * 0.012);
+      fill(255, 60 + 120 * focus);
+      text("— anónimo · " + c.year, cx, cy + cardH / 2 - 30);
+    }
+
+    // detectar card central
+    const newIdx = Math.round(s4_offset / (vh * 0.7));
+    if (newIdx !== s4_currentIdx && newIdx >= 0 && newIdx < s4_cards.length) {
+      const dt = millis() - s4_lastSwitchTime;
+      const theme = s4_cards[s4_currentIdx].theme;
+      profile.feedTimes[theme] = (profile.feedTimes[theme] || 0) + dt;
+      s4_currentIdx = newIdx;
+      s4_lastSwitchTime = millis();
+      playSoftTick();
+      // pan reage
+      const themeBias = DATA.feedThemes[theme]?.pan || 0;
+      currentPan = constrain(currentPan + themeBias * 0.08, -1, 1);
+      applyPan();
+    }
+
+    // instrução
+    noStroke();
+    textAlign(CENTER, CENTER);
+    fill(255, 80); textSize(min(vw, vh) * 0.014);
+    text("04", vw / 2, vh * 0.05);
+    fill(255, 120); textSize(min(vw, vh) * 0.015);
+    text("desliza para cima", vw / 2, vh * 0.09);
+
+    // após 25 segundos, avançar
+    if (sectionTimer > 25000) {
+      // contabilizar tempo no card actual
+      const dt = millis() - s4_lastSwitchTime;
+      const theme = s4_cards[s4_currentIdx].theme;
+      profile.feedTimes[theme] = (profile.feedTimes[theme] || 0) + dt;
+      // descobrir dominant
+      let dom = null, max = -1;
+      for (const k of Object.keys(profile.feedTimes)) {
+        if (profile.feedTimes[k] > max) { max = profile.feedTimes[k]; dom = k; }
+      }
+      profile.feedBias = dom;
+      s4_phase = 'reveal';
+      s4_revealT = 0;
+    }
+  } else {
+    s4_revealT += deltaTime;
+    const total = Object.values(profile.feedTimes).reduce((a, b) => a + b, 0) || 1;
+    const dom = profile.feedBias;
+    const pct = Math.round((profile.feedTimes[dom] / total) * 100);
+    const themeLabel = DATA.feedThemes[dom].label;
+
+    noStroke();
+    textAlign(CENTER, CENTER);
+    fill(255, 80); textSize(min(vw, vh) * 0.014);
+    text("04", vw / 2, vh * 0.10);
+
+    fill(255, min(255, s4_revealT * 0.6));
+    textSize(min(vw, vh) * 0.12);
+    textStyle(BOLD);
+    text(pct + "%", vw / 2, vh / 2 - 40);
+
+    textStyle(NORMAL);
+    textSize(min(vw, vh) * 0.018);
+    fill(255, min(220, s4_revealT * 0.4));
+    text("do teu tempo em conteúdo", vw / 2, vh / 2 + 50);
+    textSize(min(vw, vh) * 0.022);
+    textStyle(BOLD);
+    fill(255, min(255, s4_revealT * 0.4));
+    text(themeLabel.toUpperCase(), vw / 2, vh / 2 + 90);
+    textStyle(NORMAL);
+    if (s4_revealT > 1500) canAdvance = true;
+  }
+}
+
+function handleSec4Drag(x, y, dx, dy) {
+  if (s4_phase !== 'scroll') return;
+  s4_targetOffset = constrain(s4_targetOffset - dy, 0, (s4_cards.length - 1) * vh * 0.7);
+}
+
+// ============================================================
+// SECÇÃO 5 · A LINHA  (6 afirmações)
+// ============================================================
+
+let s5_idx = 0;
+let s5_pos = 0.5;       // posição actual do ponto 0..1
+let s5_dragging = false;
+let s5_answered = false;
+let s5_revealT = 0;
+let s5_phase = 'asking'; // asking | summary
+let s5_summaryT = 0;
+
+function initSec5() {
+  s5_idx = 0;
+  s5_pos = 0.5;
+  s5_dragging = false;
+  s5_answered = false;
+  s5_revealT = 0;
+  s5_phase = 'asking';
+  s5_summaryT = 0;
+  profile.agreements = [];
+  profile.conservativeScore = 0;
+}
+
+function drawSec5() {
+  if (s5_phase === 'asking') drawSec5Ask();
+  else drawSec5Summary();
+}
+
+function drawSec5Ask() {
+  const stmt = DATA.statements[s5_idx];
+  const lineY = vh * 0.62;
+  const lineX1 = vw * 0.12, lineX2 = vw * 0.88;
+
+  noStroke();
+  textAlign(CENTER, CENTER);
+  fill(255, 80); textSize(min(vw, vh) * 0.014);
+  text("05 · " + (s5_idx + 1) + "/" + DATA.statements.length, vw / 2, vh * 0.10);
+
+  fill(255, 220);
+  textSize(min(vw, vh) * 0.026);
+  textStyle(BOLD);
+  text('"' + stmt.text + '"', vw / 2, vh * 0.32, vw * 0.8);
+  textStyle(NORMAL);
+
+  // linha
+  stroke(255, 100); strokeWeight(1);
+  line(lineX1, lineY, lineX2, lineY);
+
+  // labels
+  noStroke();
+  fill(255, 140); textSize(min(vw, vh) * 0.014);
+  textAlign(LEFT, CENTER);
+  text("DISCORDO", lineX1, lineY + 30);
+  textAlign(RIGHT, CENTER);
+  text("CONCORDO", lineX2, lineY + 30);
+
+  // ponto arrastável
+  const px = lerp(lineX1, lineX2, s5_pos);
+  fill(255);
+  noStroke();
+  ellipse(px, lineY, 22);
+
+  // reveal local
+  if (s5_answered) {
+    s5_revealT += deltaTime;
+    const a = profile.agreements[s5_idx];
+    const matchPct = computeMatchPct(stmt, a);
+    fill(255, min(220, s5_revealT * 0.5));
+    textAlign(CENTER, CENTER);
+    textSize(min(vw, vh) * 0.015);
+    text(matchPct + "% dos jovens <35 responde como tu", vw / 2, lineY + 80);
+    if (s5_revealT > 900) {
+      // próxima
+      s5_idx++;
+      s5_answered = false;
+      s5_revealT = 0;
+      s5_pos = 0.5;
+      if (s5_idx >= DATA.statements.length) {
+        s5_phase = 'summary';
+        s5_summaryT = 0;
+      }
+    }
+  } else {
+    textAlign(CENTER, CENTER);
+    fill(255, 100);
+    textSize(min(vw, vh) * 0.013);
+    text("arrasta o ponto · solta para confirmar", vw / 2, lineY - 40);
+  }
+}
+
+function drawSec5Summary() {
+  s5_summaryT += deltaTime;
+  const cons = profile.conservativeScore;
+  const n = DATA.statements.length;
+  const samplePct = DATA.statements[0].agreeMore || 23; // valor fictício
+
+  noStroke();
+  textAlign(CENTER, CENTER);
+  fill(255, 80); textSize(min(vw, vh) * 0.014);
+  text("05", vw / 2, vh * 0.14);
+
+  fill(255, min(255, s5_summaryT * 0.6));
+  textSize(min(vw, vh) * 0.10);
+  textStyle(BOLD);
+  text(cons + "/" + n, vw / 2, vh / 2 - 40);
+
+  textStyle(NORMAL);
+  textSize(min(vw, vh) * 0.018);
+  fill(255, min(220, s5_summaryT * 0.4));
+  text("afirmações conservadoras concordadas", vw / 2, vh / 2 + 40);
+
+  if (s5_summaryT > 1200) {
+    fill(255, min(180, (s5_summaryT - 1200) * 0.3));
+    textSize(min(vw, vh) * 0.014);
+    text(samplePct + "% dos jovens portugueses concorda com igual ou mais", vw / 2, vh / 2 + 100);
+  }
+  if (s5_summaryT > 2400) canAdvance = true;
+}
+
+function handleSec5Press(x, y) {
+  if (s5_phase !== 'asking' || s5_answered) return;
+  const lineY = vh * 0.62;
+  const lineX1 = vw * 0.12, lineX2 = vw * 0.88;
+  const px = lerp(lineX1, lineX2, s5_pos);
+  if (abs(y - lineY) < 50 && abs(x - px) < 40) s5_dragging = true;
+}
+function handleSec5Drag(x, y) {
+  if (!s5_dragging) return;
+  const lineX1 = vw * 0.12, lineX2 = vw * 0.88;
+  s5_pos = constrain(map(x, lineX1, lineX2, 0, 1), 0, 1);
+}
+function handleSec5Release() {
+  if (s5_phase !== 'asking' || s5_answered || !s5_dragging) return;
+  s5_dragging = false;
+  if (s5_pos === 0.5) return; // não respondeu
+  profile.agreements.push(s5_pos);
+  const stmt = DATA.statements[s5_idx];
+  // se concorda (>0.5) e afirmação é conservadora -> +1
+  // se discorda (<0.5) e afirmação é progressista -> +1
+  if (stmt.conservative && s5_pos > 0.55) profile.conservativeScore++;
+  if (!stmt.conservative && s5_pos < 0.45) profile.conservativeScore++;
+  s5_answered = true;
+  playClickTone();
+  updatePanFromProfile();
+}
+
+function computeMatchPct(stmt, a) {
+  // fictício: quanto mais próximo do meio do agrupamento dominante
+  const base = stmt.conservative ? 38 : 42;
+  const dev = abs(a - (stmt.conservative ? 0.75 : 0.25));
+  return Math.max(8, Math.round(base - dev * 30));
+}
+
+// ============================================================
+// SECÇÃO 6 · O TEMPO  (timeline 2015-2024)
+// ============================================================
+
+let s6_t = 0;          // 0..1 progresso do tempo
+let s6_dragging = false;
+let s6_complete = false;
+let s6_completeT = 0;
+
+function initSec6() {
+  s6_t = 0;
+  s6_dragging = false;
+  s6_complete = false;
+  s6_completeT = 0;
+}
+
+function drawSec6() {
+  const lineY = vh * 0.5;
+  const lineX1 = vw * 0.12, lineX2 = vw * 0.88;
+  const lineW = lineX2 - lineX1;
+
+  noStroke();
+  textAlign(CENTER, CENTER);
+  fill(255, 80); textSize(min(vw, vh) * 0.014);
+  text("06", vw / 2, vh * 0.09);
+  fill(255, 160); textSize(min(vw, vh) * 0.018);
+  text("arrasta o tempo", vw / 2, vh * 0.14);
+
+  // eixo
+  stroke(255, 80); strokeWeight(1);
+  line(lineX1, lineY, lineX2, lineY);
+  // marcas anos
+  noStroke();
+  for (let i = 0; i < DATA.timeline.length; i++) {
+    const ev = DATA.timeline[i];
+    const t = (ev.year - 2015) / 9;
+    const x = lineX1 + t * lineW;
+    fill(255, t <= s6_t ? 200 : 60);
+    ellipse(x, lineY, 4);
+    fill(255, t <= s6_t ? 160 : 50);
+    textSize(min(vw, vh) * 0.011);
+    text(ev.year, x, lineY + 22);
+  }
+
+  // dois pulsos (M / F) que se afastam
+  // gap = baseGap * t + dataGap(t)
+  const gap = DATA.eurobarGap * s6_t; // pontos percentuais simulados
+  const dotY1 = lineY - 60 - gap * 2.0; // F sobe (esquerda política)
+  const dotY2 = lineY - 60 + gap * 2.0; // M desce (direita política)
+  const dotX = lineX1 + s6_t * lineW;
+
+  // trilho dos pontos
+  stroke(255, 60);
+  noFill();
+  beginShape();
+  for (let k = 0; k <= 30; k++) {
+    const tt = (k / 30) * s6_t;
+    const g = DATA.eurobarGap * tt;
+    vertex(lineX1 + tt * lineW, lineY - 60 - g * 2);
+  }
+  endShape();
+  beginShape();
+  for (let k = 0; k <= 30; k++) {
+    const tt = (k / 30) * s6_t;
+    const g = DATA.eurobarGap * tt;
+    vertex(lineX1 + tt * lineW, lineY - 60 + g * 2);
+  }
+  endShape();
+
+  noStroke();
+  fill(255); ellipse(dotX, dotY1, 12);
+  fill(255); ellipse(dotX, dotY2, 12);
+
+  // evento actual
+  let currentEv = null;
+  for (let i = 0; i < DATA.timeline.length; i++) {
+    const ev = DATA.timeline[i];
+    const t = (ev.year - 2015) / 9;
+    if (s6_t >= t - 0.02 && s6_t <= t + 0.04) currentEv = ev;
+  }
+  if (currentEv) {
+    noStroke();
+    fill(255, 220);
+    textSize(min(vw, vh) * 0.017);
+    textStyle(BOLD);
+    text(currentEv.label.toUpperCase(), vw / 2, vh * 0.74);
+    textStyle(NORMAL);
+    if (currentEv.detail) {
+      textSize(min(vw, vh) * 0.014);
+      fill(255, 160);
+      text(currentEv.detail, vw / 2, vh * 0.78);
+    }
+  }
+
+  if (s6_t >= 0.999 && !s6_complete) {
+    s6_complete = true;
+    playRevealTone();
+  }
+
+  if (s6_complete) {
+    s6_completeT += deltaTime;
+    fill(255, min(255, s6_completeT * 0.4));
+    textSize(min(vw, vh) * 0.085);
+    textStyle(BOLD);
+    text(DATA.eurobarGap + "pp", vw / 2, vh * 0.86);
+    textStyle(NORMAL);
+    textSize(min(vw, vh) * 0.013);
+    fill(255, min(180, s6_completeT * 0.3));
+    text("a maior divergência geracional em décadas", vw / 2, vh * 0.92);
+    if (s6_completeT > 1500) canAdvance = true;
+  }
+}
+
+function handleSec6Press(x, y) {
+  const lineY = vh * 0.5;
+  if (abs(y - lineY) < 100) s6_dragging = true;
+}
+function handleSec6Drag(x, y) {
+  if (!s6_dragging) return;
+  const lineX1 = vw * 0.12, lineX2 = vw * 0.88;
+  s6_t = constrain(map(x, lineX1, lineX2, 0, 1), s6_t, 1); // só avança
+  if (frameCount % 4 === 0) playSoftTick();
+}
+function handleSec6Release() { s6_dragging = false; }
+
+// ============================================================
+// SECÇÃO 7 · O ESPELHO  (cluster matching)
+// ============================================================
+
+let s7_t = 0;
+let s7_computed = false;
+
+function initSec7() {
+  s7_t = 0;
+  s7_computed = false;
+}
+
+function drawSec7() {
+  s7_t += deltaTime;
+
+  if (!s7_computed && s7_t > 800) {
+    computeCluster();
+    s7_computed = true;
+    playRevealTone();
+  }
+
+  noStroke();
+  textAlign(CENTER, CENTER);
+  fill(255, 80); textSize(min(vw, vh) * 0.014);
+  text("07", vw / 2, vh * 0.12);
+
+  if (!s7_computed) {
+    // animação subtil — pontos a convergir
+    const cx = vw / 2, cy = vh / 2;
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * TWO_PI;
+      const r = 120 - (s7_t / 800) * 100;
+      noStroke();
+      fill(255, 200);
+      ellipse(cx + cos(a) * r, cy + sin(a) * r, 4);
+    }
+    fill(255, 120); textSize(min(vw, vh) * 0.015);
+    text("a calcular o teu perfil", cx, cy + 140);
+  } else {
+    const cluster = DATA.clusters[profile.clusterIdx];
+    const alpha = min(255, (s7_t - 800) * 0.4);
+
+    fill(255, alpha);
+    textSize(min(vw, vh) * 0.018);
+    text("sobreposição com o perfil", vw / 2, vh * 0.24);
+
+    textSize(min(vw, vh) * 0.14);
+    textStyle(BOLD);
+    fill(255, alpha);
+    text(profile.clusterMatch + "%", vw / 2, vh * 0.36);
+    textStyle(NORMAL);
+
+    // nome cluster
+    stroke(255, alpha * 0.6); strokeWeight(1);
+    line(vw * 0.2, vh * 0.48, vw * 0.8, vh * 0.48);
+    noStroke();
+    fill(255, alpha);
+    textSize(min(vw, vh) * 0.020);
+    textStyle(BOLD);
+    text(cluster.name.toUpperCase(), vw / 2, vh * 0.55, vw * 0.8);
+    textStyle(NORMAL);
+
+    // tags
+    fill(255, alpha * 0.7);
+    textSize(min(vw, vh) * 0.014);
+    text(cluster.tags.join(" · "), vw / 2, vh * 0.62, vw * 0.8);
+
+    // três números crus
+    if (s7_t > 1800) {
+      const a2 = min(220, (s7_t - 1800) * 0.4);
+      fill(255, a2); textSize(min(vw, vh) * 0.013);
+      const trs = cluster.traits;
+      for (let i = 0; i < trs.length; i++) {
+        text(trs[i], vw / 2, vh * 0.72 + i * 30);
+      }
+    }
+    if (s7_t > 3000) canAdvance = true;
+  }
+}
+
+function computeCluster() {
+  // vector do utilizador
+  const u = {
+    qx: profile.quadrant.x,
+    qy: profile.quadrant.y,
+    male: profile.gender === 'M' ? 1 : 0,
+    region: profile.regionIdx !== null ? DATA.regions[profile.regionIdx].chega / 30 : 0.5,
+    feed: feedBiasScore(profile.feedBias),
+    cons: profile.conservativeScore / DATA.statements.length
+  };
+
+  let bestIdx = 0, bestScore = -1;
+  for (let i = 0; i < DATA.clusters.length; i++) {
+    const c = DATA.clusters[i].vector;
+    // similaridade ponderada
+    let s = 0;
+    s += 1 - abs(u.qx - c.qx) * 0.5;
+    s += 1 - abs(u.qy - c.qy) * 0.5;
+    s += 1 - abs(u.male - c.male) * 0.8;
+    s += 1 - abs(u.region - c.region) * 0.4;
+    s += 1 - abs(u.feed - c.feed) * 0.6;
+    s += 1 - abs(u.cons - c.cons) * 0.9;
+    if (s > bestScore) { bestScore = s; bestIdx = i; }
+  }
+  profile.clusterIdx = bestIdx;
+  // mapear bestScore (0..~6) para 35..92%
+  profile.clusterMatch = Math.round(constrain(map(bestScore, 2, 6, 35, 92), 30, 95));
+}
+
+function feedBiasScore(bias) {
+  if (!bias) return 0.5;
+  return DATA.feedThemes[bias]?.score ?? 0.5;
+}
+
+// ============================================================
+// SECÇÃO 8 · OS NÚMEROS  (fim)
+// ============================================================
+
+let s8_t = 0;
+const S8_NUMS = ["18.1%", "25%", "11%", "20pp", "2019–2022", "7h/dia"];
+const S8_STEP = 1100;
+
+function initSec8() { s8_t = 0; }
+
+function drawSec8() {
+  s8_t += deltaTime;
+  const idx = Math.floor(s8_t / S8_STEP);
+  const local = (s8_t % S8_STEP) / S8_STEP;
+
+  noStroke();
+  textAlign(CENTER, CENTER);
+
+  if (idx < S8_NUMS.length) {
+    const fade = local < 0.2 ? local / 0.2 : (local > 0.8 ? (1 - local) / 0.2 : 1);
+    fill(255, 255 * fade);
+    textSize(min(vw, vh) * 0.14);
+    textStyle(BOLD);
+    text(S8_NUMS[idx], vw / 2, vh / 2);
+    textStyle(NORMAL);
+  } else {
+    const after = s8_t - S8_NUMS.length * S8_STEP;
+    const fade = constrain(after / 1500, 0, 1);
+    fill(255, 255 * fade);
+    textSize(min(vw, vh) * 0.022);
+    textStyle(BOLD);
+    text("A GERAÇÃO ESTÁ DIVIDIDA.", vw / 2, vh / 2 - 30);
+    textStyle(NORMAL);
+    textSize(min(vw, vh) * 0.018);
+    text("tu também estás.", vw / 2, vh / 2 + 10);
+    if (after > 2500) canAdvance = true;
+  }
+}
+
+// ============================================================
+// FIM
+// ============================================================
+
+function drawEnd() {
+  const t = sectionTimer; sectionTimer += deltaTime;
+  noStroke();
+  textAlign(CENTER, CENTER);
+  fill(255, 200);
+  textSize(min(vw, vh) * 0.018);
+  text("a geração dividida", vw / 2, vh / 2 - 20);
+  textSize(min(vw, vh) * 0.012);
+  fill(255, 100);
+  text("rodrigo brazão · iade · 2026", vw / 2, vh / 2 + 20);
+  textSize(min(vw, vh) * 0.012);
+  fill(255, 80);
+  text("recarrega para repetir", vw / 2, vh - 60);
+}
+
+// ============================================================
+// INIT PER SECTION DISPATCHER
+// ============================================================
+
+function initSection(s) {
+  if (s === 0) initStart();
+  if (s === 1) initSec1();
+  if (s === 2) initSec2();
+  if (s === 3) initSec3();
+  if (s === 4) initSec4();
+  if (s === 5) initSec5();
+  if (s === 6) initSec6();
+  if (s === 7) initSec7();
+  if (s === 8) initSec8();
+}
+
+// ============================================================
+// INPUT — unificado, com viewport coords
+// ============================================================
+
+let dragLastX = 0, dragLastY = 0;
+let isPressed = false;
+
+function getVP(x, y) { return { x: x - vx, y: y - vy }; }
+
+function mousePressed() { handlePress(mouseX, mouseY); }
+function mouseDragged() { handleDrag(mouseX, mouseY); }
+function mouseReleased() { handleRelease(mouseX, mouseY); }
+function touchStarted() {
+  if (touches.length > 0) handlePress(touches[0].x, touches[0].y);
+  return false;
+}
+function touchMoved() {
+  if (touches.length > 0) handleDrag(touches[0].x, touches[0].y);
+  return false;
+}
+function touchEnded() { handleRelease(dragLastX + vx, dragLastY + vy); return false; }
+
+function handlePress(x, y) {
+  const p = getVP(x, y);
+  if (p.x < 0 || p.y < 0 || p.x > vw || p.y > vh) return;
+  isPressed = true;
+  dragLastX = p.x; dragLastY = p.y;
+
+  // toca para continuar
+  if (canAdvance && section >= 1 && section <= 8) {
+    const hintY = vh - 44;
+    if (abs(p.y - hintY) < 30 || (p.y > vh - 60)) {
+      canAdvance = false;
+      nextSection();
+      return;
+    }
+  }
+
+  switch (section) {
+    case 0: handleStartClick(p.x, p.y); break;
+    case 1: handleSec1Press(p.x, p.y); break;
+    case 2: handleSec2Click(p.x, p.y); break;
+    case 3: handleSec3Click(p.x, p.y); break;
+    case 4: /* scroll handled in drag */ break;
+    case 5: handleSec5Press(p.x, p.y); break;
+    case 6: handleSec6Press(p.x, p.y); break;
+  }
+}
+
+function handleDrag(x, y) {
+  if (!isPressed) return;
+  const p = getVP(x, y);
+  const dx = p.x - dragLastX;
+  const dy = p.y - dragLastY;
+  dragLastX = p.x; dragLastY = p.y;
+  switch (section) {
+    case 1: handleSec1Drag(p.x, p.y); break;
+    case 4: handleSec4Drag(p.x, p.y, dx, dy); break;
+    case 5: handleSec5Drag(p.x, p.y); break;
+    case 6: handleSec6Drag(p.x, p.y); break;
+  }
+}
+
+function handleRelease(x, y) {
+  if (!isPressed) return;
+  isPressed = false;
+  switch (section) {
+    case 1: handleSec1Release(); break;
+    case 5: handleSec5Release(); break;
+    case 6: handleSec6Release(); break;
+  }
+}
+
+// ============================================================
+// AUDIO
+// ============================================================
+
+function ensureAudio() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.6;
+    panNode = audioCtx.createStereoPanner();
+    panNode.pan.value = 0;
+    masterGain.connect(panNode);
+    panNode.connect(audioCtx.destination);
+  } catch (e) {}
+}
+
+function startAmbient() {
+  if (!audioCtx || ambientOn) return;
+  ambientOn = true;
+  [65.41, 98.00, 130.81].forEach((f, i) => {
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'sine'; osc.frequency.value = f;
+    g.gain.value = 0;
+    g.gain.linearRampToValueAtTime(0.06 - i * 0.015, audioCtx.currentTime + 3);
+    osc.connect(g); g.connect(masterGain);
+    osc.start();
+    drones.push({ osc, g });
+  });
+}
+
+function applyPan() {
+  if (!panNode) return;
+  panNode.pan.linearRampToValueAtTime(currentPan, audioCtx.currentTime + 0.5);
+}
+
+function updatePanFromProfile() {
+  // pan reage ao quadrante.x e conservativeScore
+  let v = profile.quadrant.x * 0.4;
+  if (profile.conservativeScore) v += (profile.conservativeScore / 6) * 0.4;
+  currentPan = constrain(v, -1, 1);
+  applyPan();
+}
+
+function playClickTone() {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = 'sine'; o.frequency.value = 523.25;
+  g.gain.setValueAtTime(0, audioCtx.currentTime);
+  g.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + 0.03);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+  o.connect(g); g.connect(masterGain);
+  o.start(); o.stop(audioCtx.currentTime + 0.6);
+}
+
+function playSoftTick() {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = 'sine'; o.frequency.value = 880;
+  g.gain.setValueAtTime(0, audioCtx.currentTime);
+  g.gain.linearRampToValueAtTime(0.04, audioCtx.currentTime + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+  o.connect(g); g.connect(masterGain);
+  o.start(); o.stop(audioCtx.currentTime + 0.15);
+}
+
+function playReadyTone() {
+  if (!audioCtx) return;
+  [523.25, 659.25].forEach((f, i) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    const t = audioCtx.currentTime + i * 0.12;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.1, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+    o.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + 0.8);
+  });
+}
+
+function playRevealTone() {
+  if (!audioCtx) return;
+  [261.63, 329.63, 392.00, 523.25].forEach((f, i) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    const t = audioCtx.currentTime + i * 0.04;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.07, t + 0.1);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 2);
+    o.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + 2.2);
+  });
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function quadrantPct(q) {
+  // fictício: divide jovens PT em 4 quadrantes
+  if (q.x >= 0 && q.y >= 0) return DATA.quadrants.rightAuth;
+  if (q.x >= 0 && q.y < 0) return DATA.quadrants.rightLib;
+  if (q.x < 0 && q.y >= 0) return DATA.quadrants.leftAuth;
+  return DATA.quadrants.leftLib;
+}
+
+// ============================================================
+// DATA — TODOS FICTÍCIOS · substituir aqui pelos dados reais
+// ============================================================
+
+const DATA = {
+  // 01 — distribuição por quadrante (jovens PT <35) — fictício
+  quadrants: {
+    rightAuth: 27,
+    rightLib: 14,
+    leftAuth: 11,
+    leftLib: 23
+  },
+
+  // 02 — % voto Chega <35 anos por género (fictício, próximo do briefing)
+  chegaShare: {
+    maleU35: 25,
+    femaleU35: 11
+  },
+
+  // 03 — regiões (pontos no mapa) · rx/ry coords 0..1 dentro do mapa
+  // chega = % Chega <35 nesse concelho/distrito (fictício)
+  regions: [
+    { name: "Viana do Castelo", rx: 0.18, ry: 0.05, chega: 16 },
+    { name: "Braga",             rx: 0.32, ry: 0.10, chega: 22 },
+    { name: "Porto",             rx: 0.22, ry: 0.18, chega: 24 },
+    { name: "Vila Real",         rx: 0.55, ry: 0.12, chega: 19 },
+    { name: "Bragança",          rx: 0.78, ry: 0.08, chega: 17 },
+    { name: "Aveiro",            rx: 0.22, ry: 0.30, chega: 21 },
+    { name: "Viseu",             rx: 0.48, ry: 0.30, chega: 23 },
+    { name: "Guarda",            rx: 0.72, ry: 0.30, chega: 20 },
+    { name: "Coimbra",           rx: 0.28, ry: 0.40, chega: 18 },
+    { name: "Castelo Branco",    rx: 0.62, ry: 0.42, chega: 22 },
+    { name: "Leiria",            rx: 0.22, ry: 0.50, chega: 24 },
+    { name: "Santarém",          rx: 0.36, ry: 0.55, chega: 26 },
+    { name: "Portalegre",        rx: 0.62, ry: 0.55, chega: 20 },
+    { name: "Lisboa",            rx: 0.18, ry: 0.62, chega: 17 },
+    { name: "Setúbal",           rx: 0.22, ry: 0.72, chega: 22 },
+    { name: "Évora",             rx: 0.50, ry: 0.70, chega: 19 },
+    { name: "Beja",              rx: 0.48, ry: 0.85, chega: 28 },
+    { name: "Faro",              rx: 0.38, ry: 0.96, chega: 25 }
+  ],
+
+  // 04 — temas e cards do feed (fictício)
+  feedThemes: {
+    antifeminist: { label: "antifeminista",    pan: 0.6, score: 0.85 },
+    antimigration:{ label: "anti-imigração",   pan: 0.7, score: 0.9  },
+    nostalgic:    { label: "nostálgico de regimes autoritários", pan: 0.4, score: 0.75 },
+    progressive:  { label: "progressista",     pan: -0.6, score: 0.15 },
+    democratic:   { label: "pró-democracia",   pan: -0.3, score: 0.3  },
+    neutral:      { label: "neutro",           pan: 0.0, score: 0.5  }
+  },
+  feedCards: [
+    { text: "as mulheres já têm tudo, agora reclamam de tudo.",         theme: "antifeminist",  year: 2023 },
+    { text: "este país já não é nosso. abrimos a porta a quem quiser.", theme: "antimigration", year: 2024 },
+    { text: "o salazarismo trouxe ordem que hoje não temos.",           theme: "nostalgic",     year: 2022 },
+    { text: "a democracia é uma fachada. quem governa não fomos nós a eleger.", theme: "nostalgic", year: 2023 },
+    { text: "o aborto não é direito, é decisão fácil.",                 theme: "antifeminist",  year: 2024 },
+    { text: "imigrante entra, português sai.",                          theme: "antimigration", year: 2024 },
+    { text: "se calhares ao 25 de Abril, calhas a Cuba.",               theme: "nostalgic",     year: 2023 },
+    { text: "violência doméstica? muita gente inventa.",                theme: "antifeminist",  year: 2022 },
+    { text: "queremos um homem forte, não um líder de comissão.",       theme: "nostalgic",     year: 2024 },
+    { text: "a verdadeira liberdade é poder ser quem se é.",            theme: "progressive",   year: 2023 },
+    { text: "a igualdade não é uma ameaça. é um direito.",              theme: "progressive",   year: 2022 },
+    { text: "imigração é também a história deste país.",                theme: "progressive",   year: 2024 },
+    { text: "o 25 de Abril é o que protege isto que aqui vês.",         theme: "democratic",    year: 2024 },
+    { text: "se as instituições falham, melhoram-se. não se destroem.", theme: "democratic",    year: 2023 },
+    { text: "olha para os teus filhos e pensa que país queres deixar.", theme: "neutral",       year: 2024 }
+  ],
+
+  // 05 — 6 afirmações
+  statements: [
+    { text: "uma mulher deve poder decidir sobre o seu corpo.",      conservative: false, agreeMore: 23 },
+    { text: "a imigração enfraquece o país.",                        conservative: true  },
+    { text: "o 25 de Abril destruiu Portugal.",                      conservative: true  },
+    { text: "a violência doméstica é exagerada nos média.",          conservative: true  },
+    { text: "as touradas são património a preservar.",               conservative: true  },
+    { text: "a democracia já não funciona em Portugal.",             conservative: true  }
+  ],
+
+  // 06 — eventos timeline 2015-2024 (fictício)
+  timeline: [
+    { year: 2015, label: "redes sociais sobem",       detail: "primeira geração com smartphone na adolescência" },
+    { year: 2017, label: "#metoo",                    detail: "movimento global · backlash inicial" },
+    { year: 2019, label: "Chega entra no parlamento", detail: "1.º deputado eleito" },
+    { year: 2020, label: "pandemia",                  detail: "jovens · ~7h/dia online" },
+    { year: 2021, label: "explosão do vídeo curto",   detail: "tiktok e reels dominam adolescência" },
+    { year: 2022, label: "Chega 7.2%",                detail: "12 deputados" },
+    { year: 2024, label: "Chega 18.1%",               detail: "homens <35: 25% · mulheres <35: 11%" }
+  ],
+  eurobarGap: 20, // pp — fictício, próximo do briefing
+
+  // 07 — clusters
+  clusters: [
+    {
+      name: "Jovem · Masculino · Litoral Norte · Conservador",
+      tags: ["18-29", "M", "norte", "anti-imigração"],
+      traits: [
+        "votou Chega · 2024",
+        "11 anos de escolaridade média",
+        "6.4h/dia em vídeo curto"
+      ],
+      vector: { qx: 0.7, qy: 0.5, male: 1, region: 0.75, feed: 0.85, cons: 0.75 }
+    },
+    {
+      name: "Jovem · Masculino · Interior · Autoritário Nostálgico",
+      tags: ["18-29", "M", "interior", "nostálgico"],
+      traits: [
+        "votou Chega · 2024",
+        "10 anos de escolaridade média",
+        "5.2h/dia em vídeo curto"
+      ],
+      vector: { qx: 0.5, qy: 0.8, male: 1, region: 0.7, feed: 0.75, cons: 0.7 }
+    },
+    {
+      name: "Jovem · Masculino · Urbano · Indeciso",
+      tags: ["18-29", "M", "urbano", "centrista"],
+      traits: [
+        "abstenção · 2024",
+        "13 anos de escolaridade média",
+        "4.1h/dia em vídeo curto"
+      ],
+      vector: { qx: 0.1, qy: 0.0, male: 1, region: 0.4, feed: 0.5, cons: 0.4 }
+    },
+    {
+      name: "Jovem · Feminino · Urbano · Progressista",
+      tags: ["18-29", "F", "urbano", "progressista"],
+      traits: [
+        "votou à esquerda · 2024",
+        "15 anos de escolaridade média",
+        "3.8h/dia em vídeo curto"
+      ],
+      vector: { qx: -0.7, qy: -0.4, male: 0, region: 0.3, feed: 0.15, cons: 0.1 }
+    },
+    {
+      name: "Jovem · Feminino · Interior · Tradicional",
+      tags: ["18-29", "F", "interior", "tradicional"],
+      traits: [
+        "votou ao centro · 2024",
+        "12 anos de escolaridade média",
+        "4.6h/dia em vídeo curto"
+      ],
+      vector: { qx: 0.3, qy: 0.4, male: 0, region: 0.55, feed: 0.5, cons: 0.5 }
+    },
+    {
+      name: "Jovem · Não-binário · Urbano · Activista",
+      tags: ["18-29", "outros", "urbano", "activista"],
+      traits: [
+        "votou à esquerda · 2024",
+        "16 anos de escolaridade média",
+        "3.2h/dia em vídeo curto"
+      ],
+      vector: { qx: -0.9, qy: -0.7, male: 0.3, region: 0.3, feed: 0.05, cons: 0.05 }
+    }
+  ]
+};
+</script>
+</body>
+</html>
