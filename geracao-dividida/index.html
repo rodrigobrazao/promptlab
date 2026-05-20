@@ -1274,113 +1274,181 @@ function sendToReverb(node) {
 function startAmbient() {
   if (!audioCtx || ambientOn) return;
   ambientOn = true;
-  // 5 camadas: C1 sub, C2, G2, C3, G3 — corpo + harmónicos
+  // bed harmónico discreto (só dá corpo, não é o protagonista)
   const layers = [
-    { f: 32.70, g: 0.18, type: 'sine'     }, // sub
-    { f: 65.41, g: 0.14, type: 'sine'     }, // C2
-    { f: 98.00, g: 0.10, type: 'sine'     }, // G2
-    { f: 130.81, g: 0.08, type: 'sine'    }, // C3
-    { f: 196.00, g: 0.05, type: 'triangle' } // G3 harmónico
+    { f: 55.00, g: 0.06, type: 'sine' },     // A1 sub
+    { f: 110.00, g: 0.05, type: 'sine' },    // A2
+    { f: 164.81, g: 0.03, type: 'sine' }     // E3
   ];
   layers.forEach(L => {
     const osc = audioCtx.createOscillator();
     const g = audioCtx.createGain();
     const filter = audioCtx.createBiquadFilter();
-    filter.type = 'lowpass'; filter.frequency.value = 600; filter.Q.value = 0.7;
+    filter.type = 'lowpass'; filter.frequency.value = 500; filter.Q.value = 0.6;
     osc.type = L.type; osc.frequency.value = L.f;
     g.gain.value = 0;
-    g.gain.linearRampToValueAtTime(L.g, audioCtx.currentTime + 3.5);
+    g.gain.linearRampToValueAtTime(L.g, audioCtx.currentTime + 4);
     osc.connect(filter); filter.connect(g); g.connect(masterGain);
     sendToReverb(g);
     osc.start();
     drones.push({ osc, g, filter, baseFreq: L.f, baseGain: L.g });
   });
 
-  // melodia contínua
-  startMelody();
+  // piano contínuo estilo Nyman
+  startPiano();
 }
 
-// === MELODIA — Lá menor natural, melancólica, lenta, com reverb ===
-// A minor scale: A C D E F G + Bb (Phrygian colour para tristeza)
-// MIDI-like freqs: A3=220, C4=261.63, D4=293.66, E4=329.63, F4=349.23, G4=392.00, Bb4=466.16, A4=440
-const MELODY_NOTES = {
-  A3: 220.00, C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00,
-  A4: 440.00, Bb4: 466.16, C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46,
-  G5: 783.99
+// ============================================================
+// PIANO — síntese aditiva + scheduler de ostinato + melodia
+// Estilo Michael Nyman / "The Piano", Lá menor
+// ============================================================
+
+const PIANO_NOTES = {
+  A1: 55.00, E2: 82.41, A2: 110.00, C3: 130.81, E3: 164.81, F3: 174.61, G3: 196.00,
+  A3: 220.00, B3: 246.94, C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00,
+  A4: 440.00, B4: 493.88, C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99,
+  A5: 880.00
 };
-// frases melódicas curtas, descendentes, com pausas (null = silêncio)
-const MELODY_PHRASES = [
-  ["A4", "G4", "F4", "E4", null, "D4", "E4", "C4"],
-  ["E5", "D5", "C5", "Bb4", "A4", null, "F4", "E4"],
-  ["C5", "Bb4", "A4", null, "G4", "A4", "F4", null],
-  ["A4", "C5", "Bb4", "A4", "G4", "F4", "E4", "D4"],
-  ["F5", "E5", "D5", "C5", null, "Bb4", "A4", null],
-  ["D4", "F4", "E4", "D4", "C4", null, "A3", null]
-];
-let melodyOn = false;
-let melodyVoiceGain = 0.16; // volume base — ajustável por mood
 
-function startMelody() {
-  if (melodyOn) return;
-  melodyOn = true;
-  scheduleNextPhrase();
+// nota de piano por síntese aditiva
+function playPianoNote(freq, peakVol, duration, when, panOffset) {
+  if (!audioCtx) return;
+  const t = (when !== undefined) ? when : audioCtx.currentTime;
+  const dur = duration || 2.2;
+  const v = peakVol;
+
+  // pan opcional por nota (estéreo natural)
+  const p = audioCtx.createStereoPanner();
+  p.pan.value = panOffset || 0;
+  p.connect(masterGain);
+  sendToReverb(p);
+
+  // 4 parciais (1, 2, 3, 4) com gains decrescentes — timbre de corda
+  const partials = [
+    { mult: 1,    gain: 1.00, decay: 1.0 },
+    { mult: 2,    gain: 0.45, decay: 0.7 },
+    { mult: 3,    gain: 0.22, decay: 0.5 },
+    { mult: 4.01, gain: 0.10, decay: 0.4 }
+  ];
+  partials.forEach(par => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq * par.mult;
+    const peak = v * par.gain;
+    const noteDur = dur * par.decay;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.006);     // attack rápido
+    g.gain.exponentialRampToValueAtTime(peak * 0.35, t + 0.18); // queda inicial
+    g.gain.exponentialRampToValueAtTime(0.0001, t + noteDur);   // sustain longo
+    o.connect(g); g.connect(p);
+    o.start(t); o.stop(t + noteDur + 0.05);
+  });
+
+  // pequeno "click" do martelo (ruído filtrado)
+  const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.05, audioCtx.sampleRate);
+  const data = noiseBuf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = noiseBuf;
+  const ng = audioCtx.createGain();
+  ng.gain.value = v * 0.08;
+  const nf = audioCtx.createBiquadFilter();
+  nf.type = 'bandpass'; nf.frequency.value = freq * 4; nf.Q.value = 4;
+  noise.connect(nf); nf.connect(ng); ng.connect(p);
+  noise.start(t);
 }
 
-function scheduleNextPhrase() {
-  if (!melodyOn || !audioCtx) return;
-  const phrase = MELODY_PHRASES[Math.floor(Math.random() * MELODY_PHRASES.length)];
-  const noteInterval = 1100 + Math.random() * 400; // ms entre notas
-  for (let i = 0; i < phrase.length; i++) {
-    const n = phrase[i];
-    if (n) {
-      setTimeout(() => playMelodyNote(MELODY_NOTES[n]), i * noteInterval);
+// === SCHEDULER ===
+// O piano corre em compasso 4/4. Em cada beat dispara:
+//  - ostinato (mão esquerda) em colcheias
+//  - melodia (mão direita) com notas longas
+// Velocidade e densidade variam por secção.
+
+let pianoOn = false;
+let pianoBeat = 0;          // contador de semínimas
+let pianoBPM = 70;          // base lenta
+let pianoVolume = 0.18;     // base — escalada por mood
+let melodyDensity = 0.55;   // 0..1 prob de tocar melodia em cada compasso
+
+// padrões de ostinato (índices em escala de Lá menor) — repete-se em 4 beats
+// Notas em colcheias (8 por compasso). Inspiração: arpejos de Am.
+const OSTINATO_PATTERNS = [
+  // arpejo Am simples: A C E A · E C A E
+  ["A3","C4","E4","A4","E4","C4","A3","E4"],
+  // mais distante: A E C E · D F E A
+  ["A3","E4","C4","E4","D4","F4","E4","A3"],
+  // suspense: A G F E · D F E A
+  ["A3","G4","F4","E4","D4","F4","E4","A4"]
+];
+
+// frases melódicas (em A minor) — uma nota por semínima, null = silêncio
+const MELODY_LINES = [
+  ["A4", null, "G4", null, "F4", null, "E4", null],
+  ["E5", null, "D5", null, "C5", null, "B4", null],
+  ["C5", null, "B4", "A4", null, "G4", "F4", null],
+  ["A4", "B4", "C5", null, "B4", "A4", "G4", null],
+  ["D5", null, "C5", "B4", "A4", null, null, null]
+];
+
+let currentOstinato = OSTINATO_PATTERNS[0];
+let currentMelody   = MELODY_LINES[0];
+let melodyActive    = true;
+
+function startPiano() {
+  if (pianoOn) return;
+  pianoOn = true;
+  pianoBeat = 0;
+  scheduleNextBeat();
+}
+
+function scheduleNextBeat() {
+  if (!pianoOn || !audioCtx) return;
+  const secondsPerBeat = 60 / pianoBPM;
+  const t = audioCtx.currentTime + 0.05; // pequeno look-ahead
+
+  // posição dentro do compasso (0..3)
+  const beatInBar = pianoBeat % 4;
+  // 2 colcheias do ostinato neste beat (índices 0..7)
+  const o1Idx = beatInBar * 2;
+  const o2Idx = beatInBar * 2 + 1;
+
+  // ostinato (mão esquerda) — pan ligeiramente à esquerda
+  const ostV = pianoVolume * 0.55;
+  const f1 = PIANO_NOTES[currentOstinato[o1Idx]];
+  const f2 = PIANO_NOTES[currentOstinato[o2Idx]];
+  if (f1) playPianoNote(f1, ostV, secondsPerBeat * 1.5, t, -0.15);
+  if (f2) playPianoNote(f2, ostV * 0.85, secondsPerBeat * 1.2, t + secondsPerBeat / 2, -0.15);
+
+  // baixo (root) no beat 1 do compasso — peso
+  if (beatInBar === 0) {
+    const root = PIANO_NOTES.A2;
+    playPianoNote(root, pianoVolume * 1.2, secondsPerBeat * 4, t, -0.3);
+  }
+  // quinta no beat 3 — empurra
+  if (beatInBar === 2) {
+    playPianoNote(PIANO_NOTES.E2, pianoVolume * 0.9, secondsPerBeat * 2, t, -0.3);
+  }
+
+  // melodia (mão direita) — uma nota por beat
+  if (melodyActive && currentMelody[beatInBar]) {
+    const mf = PIANO_NOTES[currentMelody[beatInBar]];
+    if (mf) playPianoNote(mf, pianoVolume * 1.4, secondsPerBeat * 2.5, t, 0.20);
+  }
+
+  // ao terminar o compasso: escolher novos padrões probabilisticamente
+  if (beatInBar === 3) {
+    if (Math.random() < 0.35) currentOstinato = OSTINATO_PATTERNS[Math.floor(Math.random() * OSTINATO_PATTERNS.length)];
+    if (Math.random() < melodyDensity) {
+      currentMelody = MELODY_LINES[Math.floor(Math.random() * MELODY_LINES.length)];
+      melodyActive = true;
+    } else {
+      melodyActive = false; // compasso só com ostinato — respira
     }
   }
-  const phraseLen = phrase.length * noteInterval;
-  // pausa entre frases
-  const restTime = 1800 + Math.random() * 2200;
-  setTimeout(scheduleNextPhrase, phraseLen + restTime);
-}
 
-function playMelodyNote(freq) {
-  if (!audioCtx || !melodyOn) return;
-  const t = audioCtx.currentTime;
-  const dur = 2.6;
-
-  // voz 1: triangle suave (piano-ish)
-  const o1 = audioCtx.createOscillator();
-  const g1 = audioCtx.createGain();
-  const f1 = audioCtx.createBiquadFilter();
-  o1.type = 'triangle'; o1.frequency.value = freq;
-  f1.type = 'lowpass'; f1.frequency.value = 2200; f1.Q.value = 0.6;
-  g1.gain.setValueAtTime(0, t);
-  g1.gain.linearRampToValueAtTime(melodyVoiceGain, t + 0.04);
-  g1.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o1.connect(f1); f1.connect(g1); g1.connect(masterGain);
-  sendToReverb(g1);
-  o1.start(t); o1.stop(t + dur + 0.1);
-
-  // voz 2: sine uma oitava abaixo (corpo)
-  const o2 = audioCtx.createOscillator();
-  const g2 = audioCtx.createGain();
-  o2.type = 'sine'; o2.frequency.value = freq / 2;
-  g2.gain.setValueAtTime(0, t);
-  g2.gain.linearRampToValueAtTime(melodyVoiceGain * 0.55, t + 0.05);
-  g2.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o2.connect(g2); g2.connect(masterGain);
-  sendToReverb(g2);
-  o2.start(t); o2.stop(t + dur + 0.1);
-
-  // voz 3: sine duas oitavas acima muito baixinha (ar/cintilação)
-  const o3 = audioCtx.createOscillator();
-  const g3 = audioCtx.createGain();
-  o3.type = 'sine'; o3.frequency.value = freq * 2;
-  g3.gain.setValueAtTime(0, t);
-  g3.gain.linearRampToValueAtTime(melodyVoiceGain * 0.18, t + 0.08);
-  g3.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.7);
-  o3.connect(g3); g3.connect(masterGain);
-  sendToReverb(g3);
-  o3.start(t); o3.stop(t + dur);
+  pianoBeat++;
+  setTimeout(scheduleNextBeat, secondsPerBeat * 1000);
 }
 
 // força global (0..1)
@@ -1425,27 +1493,32 @@ function updatePanFromProfile() {
   setMusicTension(pol * 0.8);
 }
 
-// chamado em cada mudança de secção para definir cor musical
 function setSectionMood(sec) {
   if (!ambientOn) return;
+  // bed (drones) ténue só dá corpo
   const moods = {
-    1: 0.55,
-    2: 0.60,
-    3: 0.70,
-    4: 0.95,
-    5: 1.10,
-    6: 1.25,
-    7: 0.80,
-    8: 0.55
+    1: 0.55, 2: 0.60, 3: 0.70, 4: 0.95, 5: 1.10, 6: 1.25, 7: 0.80, 8: 0.55
   };
   const tens = { 1: 0, 2: 0, 3: 0.1, 4: 0.4, 5: 0.6, 6: 0.9, 7: 0.5, 8: 0.2 };
-  // melodia: mais alta no confronto, mais distante no fim
-  const melVol = {
-    1: 0.14, 2: 0.16, 3: 0.18, 4: 0.20, 5: 0.22, 6: 0.24, 7: 0.18, 8: 0.10
+
+  // piano: volume + BPM + densidade melódica por secção
+  const piano = {
+    1: { vol: 0.16, bpm: 60, density: 0.35 },  // contemplativo
+    2: { vol: 0.17, bpm: 62, density: 0.40 },
+    3: { vol: 0.19, bpm: 66, density: 0.55 },  // expansivo
+    4: { vol: 0.22, bpm: 76, density: 0.70 },  // feed - mais inquieto
+    5: { vol: 0.24, bpm: 72, density: 0.80 },  // linha - confronto
+    6: { vol: 0.27, bpm: 80, density: 0.95 },  // tempo - épico
+    7: { vol: 0.18, bpm: 58, density: 0.50 },  // espelho - reflexivo
+    8: { vol: 0.13, bpm: 56, density: 0.35 }   // números - esvazia
   };
   if (sec in moods) setMusicIntensity(moods[sec]);
   if (sec in tens)  setMusicTension(tens[sec]);
-  if (sec in melVol) melodyVoiceGain = melVol[sec];
+  if (sec in piano) {
+    pianoVolume   = piano[sec].vol;
+    pianoBPM      = piano[sec].bpm;
+    melodyDensity = piano[sec].density;
+  }
 }
 
 // ====== one-shots ======
